@@ -5,6 +5,24 @@
 
 import nodemailer from 'nodemailer';
 
+function getEnvValue(name: string): string {
+  return process.env[name]?.trim() ?? '';
+}
+
+function parseBooleanEnv(name: string, fallback: boolean): boolean {
+  const value = getEnvValue(name);
+
+  if (!value) {
+    return fallback;
+  }
+
+  const normalized = value.toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+
+  return fallback;
+}
+
 interface EmailTaskData {
   id: string;
   title: string;
@@ -25,11 +43,11 @@ interface UserEmailInfo {
 }
 
 function getTransporter() {
-  const host = process.env.SMTP_HOST || 'smtp.hostinger.com';
-  const port = Number(process.env.SMTP_PORT) || 465;
-  const secure = process.env.SMTP_SECURE === 'true' || port === 465;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  const host = getEnvValue('SMTP_HOST') || 'smtp.hostinger.com';
+  const port = Number(getEnvValue('SMTP_PORT')) || 465;
+  const secure = parseBooleanEnv('SMTP_SECURE', port === 465);
+  const user = getEnvValue('SMTP_USER');
+  const pass = getEnvValue('SMTP_PASS');
 
   if (!user || !pass) {
     return null;
@@ -37,7 +55,7 @@ function getTransporter() {
 
   return nodemailer.createTransport({
     host,
-    port,
+    port: Number.isFinite(port) && port > 0 ? port : 465,
     secure,
     auth: {
       user,
@@ -46,12 +64,13 @@ function getTransporter() {
     tls: {
       rejectUnauthorized: false,
     },
+    ...(port === 587 ? { requireTLS: true } : {}),
   });
 }
 
 function getFromAddress(): string {
-  const fromName = process.env.SMTP_FROM_NAME || 'PaisaFin Task Management';
-  const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || 'notifications@paisafin.com';
+  const fromName = getEnvValue('SMTP_FROM_NAME') || 'PaisaFin Task Management';
+  const fromEmail = getEnvValue('SMTP_FROM_EMAIL') || getEnvValue('SMTP_USER') || 'notifications@paisafin.com';
   return `"${fromName}" <${fromEmail}>`;
 }
 
@@ -203,7 +222,7 @@ function buildEmailTemplate({
               <!-- Polite Corporate Sign-off -->
               <div style="border-top: 1px solid #e2e8f0; padding-top: 20px;">
                 <p style="margin: 0; font-size: 13px; color: #475569;">With warm regards,</p>
-                <p style="margin: 4px 0 0 0; font-size: 14px; font-weight: 700; color: #0f172a;">PaisaFin Operations Team</p>
+                <p style="margin: 4px 0 0 0; font-size: 14px; font-weight: 700; color: #0f172a;">Amit Bahuguna Managaing Director</p>
                 <p style="margin: 2px 0 0 0; font-size: 12px; color: #64748b;">PaisaFin Solutions | Internal Work Management</p>
               </div>
             </td>

@@ -5,7 +5,8 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Briefcase, Lock, Mail, Eye, EyeOff, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Briefcase, Lock, Mail, Eye, EyeOff, AlertCircle, Smartphone, Download, Copy } from 'lucide-react';
+import { getDeviceType, getMobileInstallSteps, buildDownloadText } from '../utils/mobileInstall';
 
 export const LoginScreen: React.FC = () => {
   const { login, error, setError } = useAuth();
@@ -13,6 +14,33 @@ export const LoginScreen: React.FC = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [copyStatus, setCopyStatus] = useState('');
+  const deviceType = getDeviceType();
+  const installSteps = getMobileInstallSteps(deviceType);
+  const appLink = typeof window !== 'undefined' ? window.location.href : 'https://your-domain.com';
+
+  const handleDownloadAppInstructions = () => {
+    const fileContent = buildDownloadText(appLink, deviceType);
+    const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'office-task-manager-install.txt';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(appLink);
+      setCopyStatus('Link copied');
+    } catch {
+      setCopyStatus('Copy blocked by browser');
+    }
+    window.setTimeout(() => setCopyStatus(''), 2000);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,6 +76,51 @@ export const LoginScreen: React.FC = () => {
       </div>
 
       <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="mb-5 rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-slate-700 shadow-sm">
+          <div className="flex items-center gap-2 text-indigo-700 font-semibold text-sm">
+            <Smartphone className="w-4 h-4" />
+            <span>Install from mobile link</span>
+          </div>
+          <p className="mt-2 text-xs text-slate-600">
+            Open this app in your mobile browser and install it without the Play Store.
+          </p>
+          <ol className="mt-3 space-y-2 text-sm text-slate-700">
+            {installSteps.map((step, index) => (
+              <li key={step} className="flex gap-2">
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-bold text-white">
+                  {index + 1}
+                </span>
+                <span>{step}</span>
+              </li>
+            ))}
+          </ol>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <a
+              href={appLink}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-indigo-700 border border-indigo-200 hover:bg-indigo-100"
+            >
+              <Download className="w-4 h-4" />
+              Open app link
+            </a>
+            <button
+              type="button"
+              onClick={handleDownloadAppInstructions}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+            >
+              <Download className="w-4 h-4" />
+              Download link
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={handleCopyLink}
+            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+          >
+            <Copy className="w-4 h-4" />
+            {copyStatus || 'Copy install link'}
+          </button>
+        </div>
+
         <div className="bg-white py-8 px-6 shadow-sm border border-slate-200 rounded-xl sm:px-10">
           {error && (
             <div className="mb-5 rounded-lg bg-rose-50 border border-rose-200 p-3.5 flex items-start gap-3 text-rose-800 text-sm">

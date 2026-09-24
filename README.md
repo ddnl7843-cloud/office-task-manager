@@ -16,6 +16,30 @@ A React + Vite frontend and Node.js + Express backend for an office task managem
 - settings
 - SMTP-based email notifications
 
+## Mobile app install from link (no Play Store)
+
+This app is built as a web app, so users can install it directly from a browser link instead of going through the Play Store.
+
+### Easy steps for Android
+
+1. Open the app link in Chrome on the phone.
+2. Tap the 3-dot menu button in the top-right corner.
+3. Choose Install app or Add to Home screen.
+4. Tap Install and then open the app from the home screen.
+
+### Easy steps for iPhone / iPad
+
+1. Open the app link in Safari.
+2. Tap the Share button at the bottom of the screen.
+3. Select Add to Home Screen.
+4. Tap Add, then open the app from the home screen.
+
+### Important setup for this to work
+
+- Use a live HTTPS URL, not a local file.
+- Keep the app hosted on a public web domain or server.
+- Make sure the browser can access the web manifest and app icon.
+
 ## Local development
 
 1. Install dependencies:
@@ -86,7 +110,7 @@ Node.js version recommendation:
 
 ### Required environment variables
 
-Set these in Hostinger's environment variables panel:
+Set these in Hostinger's environment variables panel. For Hostinger Webmail, `SMTP_USER` must be the full mailbox email address, not just the mailbox name.
 
 ```env
 PORT=3000
@@ -99,6 +123,8 @@ SMTP_PASS=your-hostinger-webmail-password
 SMTP_FROM_NAME=PaisaFin Task Management
 SMTP_FROM_EMAIL=notifications@paisafin.com
 ```
+
+If your Hostinger account uses port 587 instead of 465, keep `SMTP_SECURE=false` and `SMTP_PORT=587`.
 
 Never commit `.env` to GitHub.
 
