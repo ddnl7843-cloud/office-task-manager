@@ -17,8 +17,6 @@ import {
   AlertCircle,
   Database,
   Mail,
-  Send,
-  ExternalLink,
 } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
@@ -28,18 +26,15 @@ export const SettingsView: React.FC = () => {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Email / SMTP status & test states
+  // Email service configuration status (SMTP credentials remain server-side).
   const [emailStatus, setEmailStatus] = useState<{
     configured: boolean;
     host: string;
     port: string;
-    user: string | null;
     fromName: string;
     fromEmail: string;
   } | null>(null);
-  const [testEmailRecipient, setTestEmailRecipient] = useState('');
-  const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
-  const [testEmailResult, setTestEmailResult] = useState<{ success: boolean; message: string } | null>(null);
+
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -50,12 +45,7 @@ export const SettingsView: React.FC = () => {
           api.getEmailStatus().catch(() => null),
         ]);
         setSettings(settingsData);
-        if (emailData) {
-          setEmailStatus(emailData);
-          if (emailData.user) {
-            setTestEmailRecipient(emailData.user);
-          }
-        }
+        if (emailData) setEmailStatus(emailData);
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Failed to load settings');
       } finally {
@@ -64,24 +54,6 @@ export const SettingsView: React.FC = () => {
     };
     fetchSettings();
   }, []);
-
-  const handleSendTestEmail = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!testEmailRecipient.trim()) return;
-    setIsSendingTestEmail(true);
-    setTestEmailResult(null);
-    try {
-      const res = await api.sendTestEmail(testEmailRecipient.trim());
-      setTestEmailResult(res);
-    } catch (err: unknown) {
-      setTestEmailResult({
-        success: false,
-        message: err instanceof Error ? err.message : 'Failed to send test email',
-      });
-    } finally {
-      setIsSendingTestEmail(false);
-    }
-  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -322,61 +294,6 @@ export const SettingsView: React.FC = () => {
             </div>
           </div>
 
-          {/* Test Email Dispatcher */}
-          <div className="border border-slate-200 rounded-lg p-3 bg-white space-y-2">
-            <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-              <Send className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Verify & Test Webmail Dispatch</span>
-            </h4>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <input
-                type="email"
-                value={testEmailRecipient}
-                onChange={(e) => setTestEmailRecipient(e.target.value)}
-                placeholder="Enter recipient email"
-                className="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-              />
-              <button
-                type="button"
-                onClick={handleSendTestEmail}
-                disabled={isSendingTestEmail || !testEmailRecipient.trim()}
-                className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 flex-shrink-0"
-              >
-                {isSendingTestEmail ? (
-                  <span>Connecting & Sending...</span>
-                ) : (
-                  <>
-                    <Send className="w-3.5 h-3.5" />
-                    <span>Send Test Email</span>
-                  </>
-                )}
-              </button>
-            </div>
-
-            {testEmailResult && (
-              <div
-                className={`p-2.5 rounded-lg text-xs flex items-start gap-2 ${
-                  testEmailResult.success
-                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                    : 'bg-rose-50 text-rose-800 border border-rose-200'
-                }`}
-              >
-                {testEmailResult.success ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
-                ) : (
-                  <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
-                )}
-                <div>
-                  <p className="font-semibold">{testEmailResult.message}</p>
-                  {!testEmailResult.success && (
-                    <p className="text-[11px] text-rose-700 mt-0.5">
-                      Check your Hostinger Webmail password. To configure, open the Secrets panel in AI Studio or your server environment variables and set <code className="font-mono bg-rose-100 px-1 py-0.5 rounded">SMTP_PASS</code>.
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
         </div>
 
         {/* Database Backup & Export */}

@@ -40,7 +40,7 @@ export function getMobileInstallSteps(deviceType: MobileDeviceType | string) {
 export function buildDownloadText(appUrl: string, deviceType: MobileDeviceType | string) {
   const steps = getMobileInstallSteps(deviceType);
   return [
-    'Office Task Manager install instructions',
+    'PaisaFin Task Manager install instructions',
     '',
     `App link: ${appUrl}`,
     '',

@@ -198,7 +198,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                   .filter((u) => u.status === 'ACTIVE')
                   .map((u) => (
                     <option key={u.id} value={u.id}>
-                      {u.name} ({u.role} - {u.email})
+                      {u.name} ({u.role})
                     </option>
                   ))}
               </select>

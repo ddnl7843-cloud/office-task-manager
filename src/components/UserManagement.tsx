@@ -17,7 +17,7 @@ import {
   AlertCircle,
   Edit2,
   Lock,
-  Trash2,
+  Search,
 } from 'lucide-react';
 
 interface UserManagementProps {
@@ -33,6 +33,10 @@ export const UserManagement: React.FC<UserManagementProps> = ({
 }) => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState<User | null>(null);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState<'ALL' | UserRole>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
 
   // New user form state
   const [newName, setNewName] = useState('');
@@ -46,6 +50,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({
   const [resetPasswordVal, setResetPasswordVal] = useState('');
   const [isResetting, setIsResetting] = useState(false);
   const [resetMessage, setResetMessage] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editRole, setEditRole] = useState<UserRole>('EMPLOYEE');
+  const [editStatus, setEditStatus] = useState<'ACTIVE' | 'INACTIVE'>('ACTIVE');
+  const [editError, setEditError] = useState<string | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,15 +96,33 @@ export const UserManagement: React.FC<UserManagementProps> = ({
     }
   };
 
-  const handleToggleRole = async (user: User) => {
-    const nextRole: UserRole = user.role === 'ADMIN' ? 'EMPLOYEE' : 'ADMIN';
-    if (confirm(`Change role of ${user.name} to ${nextRole}?`)) {
-      try {
-        await api.updateUser(user.id, { role: nextRole });
-        await onRefreshUsers();
-      } catch (err: unknown) {
-        alert(err instanceof Error ? err.message : 'Failed to change role');
-      }
+  const startEditingUser = (user: User) => {
+    setEditingUser(user);
+    setEditName(user.name);
+    setEditEmail(user.email);
+    setEditRole(user.role);
+    setEditStatus(user.status);
+    setEditError(null);
+  };
+
+  const handleUpdateUser = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!editingUser) return;
+    setIsUpdating(true);
+    setEditError(null);
+    try {
+      await api.updateUser(editingUser.id, {
+        name: editName.trim(),
+        email: editEmail.trim(),
+        role: editRole,
+        status: editStatus,
+      });
+      await onRefreshUsers();
+      setEditingUser(null);
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : 'Failed to update user');
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -119,17 +147,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({
     }
   };
 
-  const handleDeleteUser = async (u: User) => {
-    if (!confirm(`Are you sure you want to permanently delete user "${u.name}" (${u.email})?`)) {
-      return;
-    }
-    try {
-      await api.deleteUser(u.id);
-      await onRefreshUsers();
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to delete user');
-    }
-  };
+  const filteredUsers = users.filter((user) => {
+    const query = search.trim().toLowerCase();
+    const matchesQuery = !query || [user.id, user.name, user.email].some((value) => value.toLowerCase().includes(query));
+    return matchesQuery && (roleFilter === 'ALL' || user.role === roleFilter) &&
+      (statusFilter === 'ALL' || user.status === statusFilter);
+  });
 
   return (
     <div className="space-y-4">
@@ -152,19 +175,30 @@ export const UserManagement: React.FC<UserManagementProps> = ({
           className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors self-start sm:self-auto shadow-2xs"
         >
           <UserPlus className="w-4 h-4" />
-          <span>Add New Employee</span>
+          <span>Add New User</span>
         </button>
       </div>
 
       {/* Users Table */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
-        <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+        <div className="p-4 border-b border-slate-200 space-y-3">
+          <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-            All Office Staff ({users.length})
+            All Office Staff ({filteredUsers.length} of {users.length})
           </span>
-          <span className="text-[11px] text-slate-400">
-            Initial seed users: Amit (Admin), Rahul, Shailesh, Jitendra
-          </span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <label className="relative sm:col-span-1">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, email, or ID" className="w-full rounded-lg border border-slate-300 py-2 pl-8 pr-3 text-xs text-slate-900" />
+            </label>
+            <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as 'ALL' | UserRole)} className="rounded-lg border border-slate-300 bg-white p-2 text-xs text-slate-900">
+              <option value="ALL">All roles</option><option value="ADMIN">Admin</option><option value="EMPLOYEE">Employee</option>
+            </select>
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'ALL' | 'ACTIVE' | 'INACTIVE')} className="rounded-lg border border-slate-300 bg-white p-2 text-xs text-slate-900">
+              <option value="ALL">All statuses</option><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option>
+            </select>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -181,7 +215,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {users.map((u) => {
+              {filteredUsers.map((u) => {
                 const userTasks = tasks.filter((t) => t.assignedTo === u.id);
                 const activeTasks = userTasks.filter(
                   (t) => t.status !== 'Completed' && t.status !== 'Cancelled'
@@ -207,13 +241,6 @@ export const UserManagement: React.FC<UserManagementProps> = ({
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-1.5">
                         <RoleBadge role={u.role} />
-                        <button
-                          onClick={() => handleToggleRole(u)}
-                          className="text-[10px] text-indigo-600 hover:underline"
-                          title="Switch between ADMIN and EMPLOYEE"
-                        >
-                          Change
-                        </button>
                       </div>
                     </td>
 
@@ -240,6 +267,13 @@ export const UserManagement: React.FC<UserManagementProps> = ({
                     <td className="py-3 px-4 text-right">
                       <div className="inline-flex items-center gap-2">
                         <button
+                          onClick={() => startEditingUser(u)}
+                          className="px-2.5 py-1 rounded text-xs font-medium text-indigo-700 hover:bg-indigo-50 border border-indigo-200 flex items-center gap-1"
+                          title="Edit user details and role"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" /><span>Edit</span>
+                        </button>
+                        <button
                           onClick={() => setShowPasswordModal(u)}
                           className="px-2.5 py-1 rounded text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 flex items-center gap-1 transition-colors"
                           title="Reset Password"
@@ -259,13 +293,6 @@ export const UserManagement: React.FC<UserManagementProps> = ({
                           {u.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
                         </button>
 
-                        <button
-                          onClick={() => handleDeleteUser(u)}
-                          className="p-1 rounded text-xs text-rose-500 hover:text-rose-700 hover:bg-rose-50 border border-slate-200 hover:border-rose-300 transition-colors"
-                          title="Delete User (Admin only)"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
                       </div>
                     </td>
                   </tr>
@@ -276,6 +303,46 @@ export const UserManagement: React.FC<UserManagementProps> = ({
         </div>
       </div>
 
+      {editingUser && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md overflow-hidden text-slate-800">
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <h3 className="text-sm font-bold text-slate-900">Edit User — {editingUser.id}</h3>
+              <button onClick={() => setEditingUser(null)} className="text-slate-400 hover:text-slate-700" aria-label="Close edit user dialog">&times;</button>
+            </div>
+            {editError && <p role="alert" className="mx-4 mt-3 rounded bg-rose-50 p-2 text-xs text-rose-700">{editError}</p>}
+            <form onSubmit={handleUpdateUser} className="p-4 space-y-3">
+              <label className="block text-xs font-semibold text-slate-700">
+                Full name
+                <input required value={editName} onChange={(event) => setEditName(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-slate-900" />
+              </label>
+              <label className="block text-xs font-semibold text-slate-700">
+                Email
+                <input required type="email" value={editEmail} onChange={(event) => setEditEmail(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-slate-900" />
+              </label>
+              <label className="block text-xs font-semibold text-slate-700">
+                Role
+                <select value={editRole} onChange={(event) => setEditRole(event.target.value as UserRole)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 text-slate-900">
+                  <option value="EMPLOYEE">Employee</option>
+                  <option value="ADMIN">Admin</option>
+                </select>
+              </label>
+              <label className="block text-xs font-semibold text-slate-700">
+                Account status
+                <select value={editStatus} onChange={(event) => setEditStatus(event.target.value as 'ACTIVE' | 'INACTIVE')} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 text-slate-900">
+                  <option value="ACTIVE">Active</option>
+                  <option value="INACTIVE">Inactive</option>
+                </select>
+              </label>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setEditingUser(null)} className="rounded-lg px-3 py-2 text-xs text-slate-600 hover:bg-slate-100">Cancel</button>
+                <button type="submit" disabled={isUpdating} className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">{isUpdating ? 'Saving...' : 'Save User'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Add User Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
@@ -283,7 +350,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({
             <div className="p-4 sm:px-6 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                 <UserPlus className="w-4 h-4 text-indigo-600" />
-                <span>Add New Office Employee</span>
+                <span>Add New User</span>
               </h3>
               <button
                 onClick={() => setShowAddModal(false)}
@@ -335,7 +402,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({
                 <input
                   type="password"
                   required
-                  placeholder="Minimum 4 characters"
+                  minLength={10}
+                  placeholder="At least 10 characters"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   className="w-full text-xs p-2.5 rounded-lg border border-slate-300 text-slate-900 focus:outline-none focus:ring-1 focus:ring-indigo-600"
@@ -367,7 +435,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({
                   disabled={isSubmitting}
                   className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 disabled:opacity-50"
                 >
-                  {isSubmitting ? 'Creating...' : 'Create Employee'}
+                  {isSubmitting ? 'Creating...' : 'Create User'}
                 </button>
               </div>
             </form>
@@ -406,6 +474,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({
                 <input
                   type="password"
                   required
+                  minLength={10}
                   placeholder="Enter new password"
                   value={resetPasswordVal}
                   onChange={(e) => setResetPasswordVal(e.target.value)}

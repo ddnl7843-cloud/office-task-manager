@@ -7,6 +7,8 @@ import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Menu, Bell, Plus, UserCircle, LogOut } from 'lucide-react';
 import { RoleBadge } from './Badge';
+import { DEFAULT_BRANDING } from '../branding';
+import { BrandingSettings } from '../types';
 
 interface HeaderProps {
   title: string;
@@ -16,6 +18,7 @@ interface HeaderProps {
   onOpenCreateTask: () => void;
   onOpenMyAccount: () => void;
   onToggleMobileMenu: () => void;
+  branding?: BrandingSettings;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -26,13 +29,14 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenCreateTask,
   onOpenMyAccount,
   onToggleMobileMenu,
+  branding = DEFAULT_BRANDING,
 }) => {
   const { user, hasPermission, logout } = useAuth();
 
   return (
     <header className="h-16 bg-white border-b border-slate-200 sticky top-0 z-30 flex items-center justify-between px-4 sm:px-6">
       {/* Left side: hamburger + title */}
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
         <button
           type="button"
           onClick={onToggleMobileMenu}
@@ -42,8 +46,11 @@ export const Header: React.FC<HeaderProps> = ({
           <Menu className="w-5 h-5" />
         </button>
 
-        <div>
-          <h1 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">{title}</h1>
+        <img src={branding.logoUrl || DEFAULT_BRANDING.logoUrl} alt="" className="h-8 w-auto shrink-0 object-contain" />
+        <span className="shrink-0 text-sm font-bold tracking-tight text-slate-900 sm:text-base">{branding.companyName}</span>
+
+        <div className="hidden min-w-0 border-l border-slate-200 pl-3 sm:block">
+          <h1 className="truncate text-base sm:text-lg font-bold text-slate-900 leading-tight">{title}</h1>
           {subtitle && <p className="text-xs text-slate-500 hidden sm:block">{subtitle}</p>}
         </div>
       </div>

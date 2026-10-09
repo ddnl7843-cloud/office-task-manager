@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { Task } from '../types';
 import { api } from '../api';
+import { useAuth } from '../context/AuthContext';
 import { PriorityBadge } from './Badge';
 import {
   ShieldCheck,
@@ -28,6 +29,7 @@ export const PendingApprovalsView: React.FC<PendingApprovalsViewProps> = ({
   onSelectTask,
   onTaskUpdated,
 }) => {
+  const { user, hasPermission } = useAuth();
   const [rejectingTaskId, setRejectingTaskId] = useState<string | null>(null);
   const [rejectComment, setRejectComment] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -35,7 +37,8 @@ export const PendingApprovalsView: React.FC<PendingApprovalsViewProps> = ({
 
   // Filter pending approvals
   const pendingTasks = tasks.filter(
-    (t) => t.status === 'Completion Requested' || t.approvalStatus === 'Pending'
+    (task) => (task.status === 'Completion Requested' || task.approvalStatus === 'Pending') &&
+      (hasPermission('APPROVE_TASK') || (task.approver === user?.id && hasPermission('REJECT_TASK')))
   );
 
   const handleApprove = async (task: Task) => {
@@ -157,28 +160,32 @@ export const PendingApprovalsView: React.FC<PendingApprovalsViewProps> = ({
 
                 {rejectingTaskId !== task.id ? (
                   <>
-                    <button
-                      onClick={() => handleApprove(task)}
-                      disabled={isProcessing}
-                      className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
-                    >
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>Approve</span>
-                    </button>
+                    {hasPermission('APPROVE_TASK') && (
+                      <button
+                        onClick={() => handleApprove(task)}
+                        disabled={isProcessing}
+                        className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Approve</span>
+                      </button>
+                    )}
 
-                    <button
-                      onClick={() => {
-                        setRejectingTaskId(task.id);
-                        setRejectComment('');
-                      }}
-                      disabled={isProcessing}
-                      className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
-                    >
-                      <XCircle className="w-4 h-4" />
-                      <span>Reject</span>
-                    </button>
+                    {hasPermission('REJECT_TASK') && (
+                      <button
+                        onClick={() => {
+                          setRejectingTaskId(task.id);
+                          setRejectComment('');
+                        }}
+                        disabled={isProcessing}
+                        className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                      >
+                        <XCircle className="w-4 h-4" />
+                        <span>Reject</span>
+                      </button>
+                    )}
                   </>
-                ) : (
+                ) : hasPermission('REJECT_TASK') ? (
                   <div className="space-y-2 p-3 bg-rose-50 rounded-lg border border-rose-200">
                     <label className="block text-[11px] font-bold text-rose-900">
                       Rejection Reason (Required):
@@ -206,7 +213,7 @@ export const PendingApprovalsView: React.FC<PendingApprovalsViewProps> = ({
                       </button>
                     </div>
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
           ))}

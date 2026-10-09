@@ -1,5 +1,5 @@
 {
-  "name": "Office Task Manager",
+  "name": "PaisaFin Task Manager",
   "description": "A professional office task management system for small teams to create, assign, track, and complete office tasks.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

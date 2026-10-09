@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+data/office_tasks_db.json
+data/branding/
+data/expense-receipts/

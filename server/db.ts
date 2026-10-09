@@ -13,9 +13,14 @@ import {
   AppNotification,
   ActivityLogEntry,
   AppSettings,
+  Expense,
+  ExpenseSettings,
   Permission,
   RolePermissions,
 } from '../src/types';
+import { ALL_SYSTEM_PERMISSIONS, resolveUserPermissions } from './permissions';
+
+export { ALL_SYSTEM_PERMISSIONS, PROTECTED_ADMIN_PERMISSIONS } from './permissions';
 
 export interface UserRecord extends User {
   passwordHash: string;
@@ -30,6 +35,7 @@ export interface SessionRecord {
 }
 
 export interface DatabaseSchema {
+  schemaVersion: number;
   users: UserRecord[];
   tasks: Task[];
   comments: TaskComment[];
@@ -37,37 +43,14 @@ export interface DatabaseSchema {
   activityLogs: ActivityLogEntry[];
   settings: AppSettings;
   rolePermissions: RolePermissions;
+  expenses: Expense[];
+  expenseSettings: ExpenseSettings;
   sessions: SessionRecord[];
   taskCounter: number;
 }
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'office_tasks_db.json');
-
-export const ALL_SYSTEM_PERMISSIONS: Permission[] = [
-  'VIEW_DASHBOARD',
-  'VIEW_ALL_TASKS',
-  'VIEW_OWN_TASKS',
-  'CREATE_TASK',
-  'EDIT_TASK',
-  'DELETE_TASK',
-  'ASSIGN_TASK',
-  'REASSIGN_TASK',
-  'CHANGE_DEADLINE',
-  'CHANGE_PRIORITY',
-  'UPDATE_TASK',
-  'UPDATE_PROGRESS',
-  'ADD_COMMENT',
-  'REQUEST_HELP',
-  'REQUEST_COMPLETION',
-  'APPROVE_TASK',
-  'REJECT_TASK',
-  'VIEW_REPORTS',
-  'VIEW_ACTIVITY_LOG',
-  'MANAGE_USERS',
-  'MANAGE_PERMISSIONS',
-  'MANAGE_SETTINGS',
-];
 
 export const DEFAULT_ROLE_PERMISSIONS: RolePermissions = {
   ADMIN: [...ALL_SYSTEM_PERMISSIONS],
@@ -79,26 +62,67 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissions = {
     'ADD_COMMENT',
     'REQUEST_HELP',
     'REQUEST_COMPLETION',
+    'VIEW_OWN_EXPENSES',
+    'CREATE_EXPENSE',
+    'SUBMIT_EXPENSE',
   ],
+};
+
+export const DEFAULT_EXPENSE_SETTINGS: ExpenseSettings = {
+  categories: [
+    { id: 'petrol-fuel', name: 'Petrol/Fuel', enabled: true, calculationMode: 'KILOMETRE', receiptRequired: true },
+    { id: 'local-travel', name: 'Local Travel', enabled: true, calculationMode: 'KILOMETRE', receiptRequired: false },
+    { id: 'outstation-travel', name: 'Outstation Travel', enabled: true, calculationMode: 'KILOMETRE', receiptRequired: true },
+    { id: 'food-meals', name: 'Food/Meals', enabled: true, calculationMode: 'AMOUNT', receiptRequired: true },
+    { id: 'accommodation', name: 'Accommodation', enabled: true, calculationMode: 'AMOUNT', receiptRequired: true },
+    { id: 'office-supplies', name: 'Office Supplies', enabled: true, calculationMode: 'AMOUNT', receiptRequired: true },
+    { id: 'courier', name: 'Courier', enabled: true, calculationMode: 'AMOUNT', receiptRequired: true },
+    { id: 'repairs-maintenance', name: 'Repairs and Maintenance', enabled: true, calculationMode: 'AMOUNT', receiptRequired: true },
+    { id: 'other-approved-expenses', name: 'Other Approved Expenses', enabled: true, calculationMode: 'AMOUNT', receiptRequired: true },
+  ],
+  rates: [],
+  maxAmount: 100000,
+  maxKilometres: 1000,
+  approvalThreshold: 10000,
 };
 
 export function hashPassword(password: string, salt?: string): { hash: string; salt: string } {
   const actualSalt = salt || crypto.randomBytes(16).toString('hex');
-  const hash = crypto.pbkdf2Sync(password, actualSalt, 1000, 64, 'sha512').toString('hex');
+  const hash = crypto.pbkdf2Sync(password, actualSalt, 210000, 64, 'sha512').toString('hex');
   return { hash, salt: actualSalt };
 }
 
 export function verifyPassword(password: string, hash: string, salt: string): boolean {
-  const testHash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
-  return testHash === hash;
+  const expectedHash = Buffer.from(hash, 'hex');
+  if (expectedHash.length !== 64) return false;
+
+  const currentHash = crypto.pbkdf2Sync(password, salt, 210000, 64, 'sha512');
+  if (crypto.timingSafeEqual(currentHash, expectedHash)) return true;
+
+  // Existing database entries were created with 1,000 rounds.
+  const legacyHash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512');
+  return crypto.timingSafeEqual(legacyHash, expectedHash);
+}
+
+export function isLegacyPassword(password: string, hash: string, salt: string): boolean {
+  const expectedHash = Buffer.from(hash, 'hex');
+  if (expectedHash.length !== 64) return false;
+  const legacyHash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512');
+  return crypto.timingSafeEqual(legacyHash, expectedHash);
 }
 
 function getDefaultDatabase(): DatabaseSchema {
-  const defaultPw = 'Office@123';
-  const u1 = hashPassword(defaultPw);
-  const u2 = hashPassword(defaultPw);
-  const u3 = hashPassword(defaultPw);
-  const u4 = hashPassword(defaultPw);
+  const initialAdminPassword = process.env.INITIAL_ADMIN_PASSWORD;
+  if (!initialAdminPassword || initialAdminPassword.length < 10) {
+    throw new Error('INITIAL_ADMIN_PASSWORD must be set to at least 10 characters before first database initialization');
+  }
+  const adminCredentials = hashPassword(initialAdminPassword);
+  const inaccessibleSeedCredentials = () => hashPassword(crypto.randomBytes(32).toString('hex'));
+  const employeeCredentials = [
+    inaccessibleSeedCredentials(),
+    inaccessibleSeedCredentials(),
+    inaccessibleSeedCredentials(),
+  ];
 
   const now = new Date().toISOString();
   const todayStr = '2026-09-22';
@@ -111,8 +135,8 @@ function getDefaultDatabase(): DatabaseSchema {
       role: 'ADMIN',
       status: 'ACTIVE',
       createdAt: '2026-09-01T08:00:00.000Z',
-      passwordHash: u1.hash,
-      salt: u1.salt,
+      passwordHash: adminCredentials.hash,
+      salt: adminCredentials.salt,
     },
     {
       id: 'U002',
@@ -121,8 +145,8 @@ function getDefaultDatabase(): DatabaseSchema {
       role: 'EMPLOYEE',
       status: 'ACTIVE',
       createdAt: '2026-09-01T08:30:00.000Z',
-      passwordHash: u2.hash,
-      salt: u2.salt,
+      passwordHash: employeeCredentials[0].hash,
+      salt: employeeCredentials[0].salt,
     },
     {
       id: 'U003',
@@ -131,8 +155,8 @@ function getDefaultDatabase(): DatabaseSchema {
       role: 'EMPLOYEE',
       status: 'ACTIVE',
       createdAt: '2026-09-01T09:00:00.000Z',
-      passwordHash: u3.hash,
-      salt: u3.salt,
+      passwordHash: employeeCredentials[1].hash,
+      salt: employeeCredentials[1].salt,
     },
     {
       id: 'U004',
@@ -141,8 +165,8 @@ function getDefaultDatabase(): DatabaseSchema {
       role: 'EMPLOYEE',
       status: 'ACTIVE',
       createdAt: '2026-09-01T09:30:00.000Z',
-      passwordHash: u4.hash,
-      salt: u4.salt,
+      passwordHash: employeeCredentials[2].hash,
+      salt: employeeCredentials[2].salt,
     },
   ];
 
@@ -378,7 +402,8 @@ function getDefaultDatabase(): DatabaseSchema {
 
   const settings: AppSettings = {
     companyName: 'PaisaFin',
-    appName: 'Office Task Manager',
+    appName: 'PaisaFin Task Manager',
+    logoUrl: null,
     defaultTaskPriority: 'Medium',
     defaultTaskStatus: 'Assigned',
     sessionTimeoutMinutes: 480, // 8 hours office workday
@@ -387,6 +412,7 @@ function getDefaultDatabase(): DatabaseSchema {
   };
 
   return {
+    schemaVersion: 1,
     users,
     tasks,
     comments,
@@ -394,6 +420,8 @@ function getDefaultDatabase(): DatabaseSchema {
     activityLogs,
     settings,
     rolePermissions: DEFAULT_ROLE_PERMISSIONS,
+    expenses: [],
+    expenseSettings: DEFAULT_EXPENSE_SETTINGS,
     sessions: [],
     taskCounter: 5,
   };
@@ -423,18 +451,58 @@ class Database {
         if (!parsed.users || !parsed.tasks || !parsed.rolePermissions) {
           throw new Error('Database schema invalid, reinitializing');
         }
+        const needsExpensePermissionMigration = !Number.isInteger(parsed.schemaVersion) || parsed.schemaVersion < 1;
+        parsed.expenses = Array.isArray(parsed.expenses) ? parsed.expenses : [];
+        parsed.expenseSettings = {
+          ...DEFAULT_EXPENSE_SETTINGS,
+          ...(parsed.expenseSettings || {}),
+          categories: Array.isArray(parsed.expenseSettings?.categories)
+            ? parsed.expenseSettings.categories
+            : DEFAULT_EXPENSE_SETTINGS.categories,
+          rates: Array.isArray(parsed.expenseSettings?.rates) ? parsed.expenseSettings.rates : [],
+        };
+        if (needsExpensePermissionMigration) {
+          parsed.rolePermissions.ADMIN = [...new Set([
+            ...(Array.isArray(parsed.rolePermissions.ADMIN) ? parsed.rolePermissions.ADMIN : []),
+            'VIEW_OWN_EXPENSES',
+            'CREATE_EXPENSE',
+            'SUBMIT_EXPENSE',
+            'VIEW_ALL_EXPENSES',
+            'APPROVE_EXPENSE',
+            'REJECT_EXPENSE',
+            'PAY_EXPENSE',
+            'MANAGE_EXPENSE_SETTINGS',
+            'VIEW_EXPENSE_REPORTS',
+          ])];
+          parsed.rolePermissions.EMPLOYEE = [...new Set([
+            ...(Array.isArray(parsed.rolePermissions.EMPLOYEE) ? parsed.rolePermissions.EMPLOYEE : []),
+            'VIEW_OWN_EXPENSES',
+            'CREATE_EXPENSE',
+            'SUBMIT_EXPENSE',
+          ])];
+        }
+        parsed.schemaVersion = 1;
+        if (parsed.settings?.appName === 'Office Task Manager') {
+          parsed.settings.appName = 'PaisaFin Task Manager';
+        }
+        if (parsed.settings && parsed.settings.logoUrl === undefined) {
+          parsed.settings.logoUrl = null;
+        }
         return parsed;
       }
     } catch (err) {
-      console.warn('Invalid or corrupted database detected. Reinitializing application data:', err);
       if (fs.existsSync(DB_FILE)) {
         const backupPath = `${DB_FILE}.corrupt-${Date.now()}.bak`;
         try {
           fs.copyFileSync(DB_FILE, backupPath);
-        } catch {
-          // Ignore backup failures and continue with reset
+        } catch (backupError) {
+          throw new Error('Application database could not be loaded, and a safety backup could not be created', {
+            cause: backupError,
+          });
         }
-        fs.unlinkSync(DB_FILE);
+        throw new Error(`Application database could not be loaded. The original file was preserved; backup created at ${backupPath}`, {
+          cause: err,
+        });
       }
     }
 
@@ -452,7 +520,8 @@ class Database {
       const data = dataToSave || this.data;
       fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf-8');
     } catch (err) {
-      console.error('Failed to write database to disk:', err);
+      console.error('Failed to write application database');
+      throw new Error('Failed to persist application database', { cause: err });
     }
   }
 
@@ -561,7 +630,7 @@ class Database {
     const user = this.getUserById(session.userId);
     if (!user || user.status !== 'ACTIVE') return null;
 
-    const permissions = this.data.rolePermissions[user.role] || [];
+    const permissions = resolveUserPermissions(user.role, this.data.rolePermissions, user.permissionOverrides);
     return { user, permissions };
   }
 

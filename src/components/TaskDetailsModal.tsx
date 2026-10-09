@@ -4,7 +4,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Task, TaskComment, User } from '../types';
+import { BrandingSettings, Task, TaskComment, User } from '../types';
+import { DEFAULT_BRANDING } from '../branding';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
 import { StatusBadge, PriorityBadge, ApprovalBadge, RoleBadge } from './Badge';
@@ -33,6 +34,7 @@ interface TaskDetailsModalProps {
   onTaskUpdated: (updatedTask: Task) => void;
   onOpenEdit?: (task: Task) => void;
   onDeleteTask?: (task: Task) => void;
+  branding?: BrandingSettings;
 }
 
 export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
@@ -42,8 +44,9 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
   onTaskUpdated,
   onOpenEdit,
   onDeleteTask,
+  branding = DEFAULT_BRANDING,
 }) => {
-  const { user, isAdmin, hasPermission } = useAuth();
+  const { user, hasPermission } = useAuth();
   const [task, setTask] = useState<(Task & { comments: TaskComment[] }) | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -125,8 +128,10 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
 
   const isAssignee = user?.id === task.assignedTo;
   const isApprover = user?.id === task.approver;
-  const canReview = (isApprover || isAdmin) && task.status === 'Completion Requested';
-  const canUpdateProgress = isAssignee || isAdmin;
+  const canReview = (hasPermission('APPROVE_TASK') || hasPermission('REJECT_TASK')) &&
+    (isApprover || hasPermission('VIEW_ALL_TASKS')) && task.status === 'Completion Requested';
+  const canUpdateProgress = hasPermission('EDIT_TASK') ||
+    (isAssignee && hasPermission('UPDATE_TASK') && hasPermission('UPDATE_PROGRESS'));
 
   // Handle Progress and Status update
   const handleSaveProgress = async () => {
@@ -135,8 +140,10 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
     try {
       const res = await api.updateTask(task.id, {
         progress: progressInput,
-        status: statusInput as any,
-        expectedCompletionDate: expectedDateInput,
+        status: statusInput as Task['status'],
+        ...(hasPermission('CHANGE_DEADLINE')
+          ? { expectedCompletionDate: expectedDateInput }
+          : {}),
       });
       setTask({ ...task, ...res.task });
       onTaskUpdated(res.task);
@@ -287,7 +294,7 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2 flex-shrink-0">
-            {isAdmin && onOpenEdit && (
+            {hasPermission('EDIT_TASK') && onOpenEdit && (
               <button
                 onClick={() => {
                   onClose();
@@ -353,7 +360,7 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
                   </p>
                 </div>
               </div>
-              {(isAssignee || isAdmin) && (
+              {(isAssignee || hasPermission('EDIT_TASK')) && (
                 <button
                   onClick={handleClearHelp}
                   className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold transition-colors self-start sm:self-center"
@@ -384,22 +391,26 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
               {/* Action buttons */}
               {!showRejectForm ? (
                 <div className="mt-3 flex items-center gap-2 pt-2 border-t border-purple-200">
-                  <button
-                    onClick={handleApprove}
-                    disabled={isSubmittingReview}
-                    className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Approve as Completed</span>
-                  </button>
-                  <button
-                    onClick={() => setShowRejectForm(true)}
-                    disabled={isSubmittingReview}
-                    className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50"
-                  >
-                    <XCircle className="w-4 h-4" />
-                    <span>Reject & Request Changes</span>
-                  </button>
+                  {hasPermission('APPROVE_TASK') && (
+                    <button
+                      onClick={handleApprove}
+                      disabled={isSubmittingReview}
+                      className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Approve as Completed</span>
+                    </button>
+                  )}
+                  {hasPermission('REJECT_TASK') && (
+                    <button
+                      onClick={() => setShowRejectForm(true)}
+                      disabled={isSubmittingReview}
+                      className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                    >
+                      <XCircle className="w-4 h-4" />
+                      <span>Reject & Request Changes</span>
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="mt-3 pt-3 border-t border-purple-200 space-y-2">
@@ -591,7 +602,7 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
                       onChange={(e) => setStatusInput(e.target.value)}
                       className="w-full rounded-lg border border-slate-300 bg-white py-1.5 px-2.5 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-indigo-600"
                     >
-                      {isAdmin ? (
+                      {hasPermission('EDIT_TASK') ? (
                         <>
                           <option value="Not Started">Not Started</option>
                           <option value="Assigned">Assigned</option>
@@ -619,6 +630,7 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
                       type="date"
                       value={expectedDateInput}
                       onChange={(e) => setExpectedDateInput(e.target.value)}
+                      disabled={!hasPermission('CHANGE_DEADLINE')}
                       className="w-full rounded-lg border border-slate-300 bg-white py-1.5 px-2.5 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-indigo-600"
                     />
                   </div>
@@ -634,7 +646,7 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
                   </button>
 
                   {/* 100% Completion Request Button */}
-                  {task.progress === 100 &&
+                  {hasPermission('REQUEST_COMPLETION') && isAssignee && task.progress === 100 &&
                     task.status !== 'Completion Requested' && (
                       <button
                         onClick={handleRequestCompletion}
@@ -651,7 +663,7 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
           </div>
 
           {/* Help Request Section */}
-          {!task.needHelp && isAssignee && task.status !== 'Completed' && (
+          {!task.needHelp && isAssignee && hasPermission('REQUEST_HELP') && task.status !== 'Completed' && (
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
               {!showHelpForm ? (
                 <div className="flex items-center justify-between">
@@ -761,7 +773,7 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
                         <span className="text-[10px] text-slate-400">
                           {new Date(comm.createdAt).toLocaleString()}
                         </span>
-                        {(isAdmin || user?.id === comm.userId) && (
+                        {(hasPermission('DELETE_TASK') || user?.id === comm.userId) && (
                           <button
                             type="button"
                             onClick={() => handleDeleteComment(comm.id)}
@@ -804,7 +816,7 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
 
         {/* Modal Footer */}
         <div className="p-3 px-6 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
-          <span className="text-[11px] text-slate-400">PaisaFin Office Task Manager</span>
+          <span className="text-[11px] text-slate-400">{branding.appName}</span>
           <button
             onClick={onClose}
             className="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold"

@@ -8,8 +8,10 @@ import {
   Task,
   TaskComment,
   AppNotification,
+  Expense,
+  ExpenseSettings,
   ActivityLogEntry,
-  AppSettings,
+  BrandingSettings,
   Permission,
   RolePermissions,
 } from './types';
@@ -205,14 +207,13 @@ export const api = {
     });
   },
 
-  async deleteUser(id: string): Promise<{ success: boolean; message: string }> {
-    return apiFetch(`/api/users/${id}`, {
-      method: 'DELETE',
-    });
-  },
-
   // Permissions
-  async getPermissions(): Promise<{ rolePermissions: RolePermissions; allPermissions: Permission[] }> {
+  async getPermissions(): Promise<{
+    rolePermissions: RolePermissions;
+    allPermissions: Permission[];
+    protectedAdminPermissions: Permission[];
+    users: Array<Pick<User, 'id' | 'name' | 'role' | 'permissionOverrides'>>;
+  }> {
     return apiFetch('/api/permissions');
   },
 
@@ -223,6 +224,16 @@ export const api = {
     });
   },
 
+  async updateUserPermissions(
+    id: string,
+    permissionOverrides: NonNullable<User['permissionOverrides']>
+  ): Promise<{ success: boolean; permissionOverrides: NonNullable<User['permissionOverrides']> }> {
+    return apiFetch(`/api/permissions/users/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ permissionOverrides }),
+    });
+  },
+
   // Activity Log
   async getActivityLogs(params?: Record<string, string>): Promise<ActivityLogEntry[]> {
     const query = params ? '?' + new URLSearchParams(params).toString() : '';
@@ -230,6 +241,125 @@ export const api = {
   },
 
   // Settings
+  async getBranding(): Promise<BrandingSettings> {
+    return apiFetch('/api/branding');
+  },
+
+  async updateBranding(branding: {
+    appName: string;
+    companyName: string;
+    logoDataUrl?: string;
+    resetLogo?: boolean;
+    resetBranding?: boolean;
+  }): Promise<{ success: boolean; branding: BrandingSettings }> {
+    return apiFetch('/api/branding', {
+      method: 'PUT',
+      body: JSON.stringify(branding),
+    });
+  },
+
+  async getExpenseSettings(): Promise<ExpenseSettings> {
+    return apiFetch('/api/expenses/settings');
+  },
+
+  async updateExpenseSettings(settings: ExpenseSettings): Promise<{ success: boolean; settings: ExpenseSettings }> {
+    return apiFetch('/api/expenses/settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    });
+  },
+
+  async getExpenses(params: Record<string, string | number> = {}): Promise<{
+    expenses: Expense[];
+    total: number;
+    page: number;
+    pageSize: number;
+    summary: {
+      submitted: number;
+      pendingApproval: number;
+      approved: number;
+      rejected: number;
+      reimbursementPending: number;
+      totalPaid: number;
+      monthlyAmount: number;
+    };
+  }> {
+    const query = new URLSearchParams(
+      Object.entries(params).map(([key, value]) => [key, String(value)])
+    ).toString();
+    return apiFetch(`/api/expenses${query ? `?${query}` : ''}`);
+  },
+
+  async getExpenseReceipt(id: string): Promise<Blob> {
+    const token = getStoredToken();
+    const response = await fetch(`/api/expenses/${encodeURIComponent(id)}/receipt`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!response.ok) {
+      let message = 'Could not download receipt';
+      try {
+        const data = await response.json();
+        if (typeof data.error === 'string') message = data.error;
+      } catch {
+        // The server may return an empty error response.
+      }
+      throw new Error(message);
+    }
+    return response.blob();
+  },
+
+  async saveExpense(
+    expense: Partial<Expense> & { receiptDataUrl?: string; submit?: boolean }
+  ): Promise<{ success: boolean; expense: Expense }> {
+    return apiFetch('/api/expenses', {
+      method: 'POST',
+      body: JSON.stringify(expense),
+    });
+  },
+
+  async updateExpense(
+    id: string,
+    expense: Partial<Expense> & { receiptDataUrl?: string; clearReceipt?: boolean }
+  ): Promise<{ success: boolean; expense: Expense }> {
+    return apiFetch(`/api/expenses/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(expense),
+    });
+  },
+
+  async submitExpense(id: string): Promise<{ success: boolean; expense: Expense }> {
+    return apiFetch(`/api/expenses/${encodeURIComponent(id)}/submit`, { method: 'POST' });
+  },
+
+  async reviewExpense(
+    id: string,
+    action: 'start_review' | 'approve' | 'reject',
+    reason?: string
+  ): Promise<{ success: boolean; expense: Expense }> {
+    return apiFetch(`/api/expenses/${encodeURIComponent(id)}/review`, {
+      method: 'POST',
+      body: JSON.stringify({ action, reason }),
+    });
+  },
+
+  async payExpense(
+    id: string,
+    payment: { paymentDate: string; paymentReference?: string; paymentRemarks?: string }
+  ): Promise<{ success: boolean; expense: Expense }> {
+    return apiFetch(`/api/expenses/${encodeURIComponent(id)}/pay`, {
+      method: 'POST',
+      body: JSON.stringify(payment),
+    });
+  },
+
+  async getExpenseReports(params: Record<string, string> = {}): Promise<{
+    monthlyEmployee: Array<{ month: string; employeeId: string; employeeName: string; kilometres: number; submittedAmount: number; approvedAmount: number; paidAmount: number }>;
+    categories: Array<{ category: string; count: number; amount: number; kilometres: number }>;
+  }> {
+    const query = new URLSearchParams(params).toString();
+    return apiFetch(`/api/expenses/reports${query ? `?${query}` : ''}`);
+  },
+
   async getSettings(): Promise<any> {
     return apiFetch('/api/settings');
   },
@@ -273,17 +403,10 @@ export const api = {
     configured: boolean;
     host: string;
     port: string;
-    user: string | null;
     fromName: string;
     fromEmail: string;
   }> {
     return apiFetch('/api/email/status');
   },
 
-  async sendTestEmail(email?: string): Promise<{ success: boolean; message: string }> {
-    return apiFetch('/api/email/test', {
-      method: 'POST',
-      body: JSON.stringify({ email }),
-    });
-  },
 };

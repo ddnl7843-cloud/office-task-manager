@@ -4,33 +4,23 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { RolePermissions, PermissionAction } from '../types';
+import { RolePermissions, PermissionAction, User } from '../types';
 import { api } from '../api';
-import { ShieldAlert, Check, X, Save, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { ShieldAlert, Check, Save, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export const PermissionsView: React.FC = () => {
+  const { user: currentUser } = useAuth();
   const [permissions, setPermissions] = useState<RolePermissions | null>(null);
+  const [permissionList, setPermissionList] = useState<{ key: PermissionAction; label: string; desc: string }[]>([]);
+  const [protectedAdminPermissions, setProtectedAdminPermissions] = useState<PermissionAction[]>([]);
+  const [users, setUsers] = useState<Array<Pick<User, 'id' | 'name' | 'role' | 'permissionOverrides'>>>([]);
+  const [selectedUserId, setSelectedUserId] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSavingUser, setIsSavingUser] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const permissionList: { key: PermissionAction; label: string; desc: string }[] = [
-    { key: 'CREATE_TASK', label: 'Create New Tasks', desc: 'Can create and assign office tasks to staff' },
-    { key: 'EDIT_TASK', label: 'Edit Any Task', desc: 'Can modify titles, categories, priorities, and deadlines' },
-    { key: 'DELETE_TASK', label: 'Delete Tasks', desc: 'Can permanently remove tasks from system' },
-    { key: 'VIEW_ALL_TASKS', label: 'View All Office Tasks', desc: 'Can view tasks assigned across the entire team' },
-    { key: 'ASSIGN_TASK', label: 'Assign / Reassign Tasks', desc: 'Can change who is assigned to complete work' },
-    { key: 'APPROVE_TASK', label: 'Approve & Reject Tasks', desc: 'Can verify 100% completion or send back for revisions' },
-    { key: 'UPDATE_PROGRESS', label: 'Update Own Progress', desc: 'Can update % progress and request completion on own tasks' },
-    { key: 'REQUEST_HELP', label: 'Request Help', desc: 'Can flag task as needing assistance and specify problem' },
-    { key: 'ADD_COMMENT', label: 'Add Task Comments', desc: 'Can participate in discussion threads on tasks' },
-    { key: 'MANAGE_USERS', label: 'User Management', desc: 'Can create accounts, reset passwords, and toggle status' },
-    { key: 'MANAGE_PERMISSIONS', label: 'Role Permissions Control', desc: 'Can modify access rights for roles' },
-    { key: 'VIEW_REPORTS', label: 'View Reports & Analytics', desc: 'Can access team metrics and export CSV data' },
-    { key: 'VIEW_ACTIVITY_LOG', label: 'Audit Activity Log', desc: 'Can view history log of system actions' },
-    { key: 'MANAGE_SETTINGS', label: 'Office Settings', desc: 'Can modify company workspace configuration' },
-  ];
 
   useEffect(() => {
     const fetchPermissions = async () => {
@@ -38,6 +28,45 @@ export const PermissionsView: React.FC = () => {
         setIsLoading(true);
         const data = await api.getPermissions();
         setPermissions(data.rolePermissions);
+        setProtectedAdminPermissions(data.protectedAdminPermissions);
+        setUsers(data.users);
+        setPermissionList(data.allPermissions.map((key) => {
+          const description: Partial<Record<PermissionAction, [string, string]>> = {
+            VIEW_DASHBOARD: ['View Dashboard', 'Open the role-appropriate dashboard'],
+            VIEW_ALL_TASKS: ['View All Tasks', 'View tasks across the entire team'],
+            VIEW_OWN_TASKS: ['View Assigned Tasks', 'View tasks assigned to or approved by the user'],
+            CREATE_TASK: ['Create Tasks', 'Create new tasks'],
+            EDIT_TASK: ['Edit Tasks', 'Edit task details and operational status'],
+            DELETE_TASK: ['Delete Tasks', 'Permanently remove tasks and associated records'],
+            ASSIGN_TASK: ['Assign Tasks', 'Assign tasks to active team members'],
+            REASSIGN_TASK: ['Reassign Tasks', 'Change task assignees'],
+            CHANGE_DEADLINE: ['Change Deadlines', 'Set or update expected completion dates'],
+            CHANGE_PRIORITY: ['Change Priority', 'Set or update task priority'],
+            UPDATE_TASK: ['Update Assigned Tasks', 'Update permitted fields on assigned tasks'],
+            UPDATE_PROGRESS: ['Update Progress', 'Update task progress and status'],
+            ADD_COMMENT: ['Add Comments', 'Post comments on accessible tasks'],
+            REQUEST_HELP: ['Request Help', 'Request help on assigned tasks'],
+            REQUEST_COMPLETION: ['Request Completion', 'Submit completed assigned tasks for review'],
+            APPROVE_TASK: ['Approve Completion', 'Approve task completion requests'],
+            REJECT_TASK: ['Reject Completion', 'Reject completion requests with a reason'],
+            VIEW_REPORTS: ['View Reports', 'Access reports and analytics'],
+            VIEW_ACTIVITY_LOG: ['View Activity Logs', 'Review the system activity log'],
+            MANAGE_USERS: ['Manage Users', 'Create, edit, activate, and reset user accounts'],
+            MANAGE_PERMISSIONS: ['Manage Permissions', 'Configure role and individual permissions'],
+            MANAGE_SETTINGS: ['Manage Settings', 'Change application and notification settings'],
+            VIEW_OWN_EXPENSES: ['View Own Expenses', 'View expense claims submitted by this user'],
+            CREATE_EXPENSE: ['Create Expenses', 'Create and edit own draft or rejected expense claims'],
+            SUBMIT_EXPENSE: ['Submit Expenses', 'Submit own expense claims for approval'],
+            VIEW_ALL_EXPENSES: ['View All Expenses', 'View expense claims across all employees'],
+            APPROVE_EXPENSE: ['Approve Expenses', 'Review and approve submitted expense claims'],
+            REJECT_EXPENSE: ['Reject Expenses', 'Reject expense claims with a required reason'],
+            PAY_EXPENSE: ['Mark Expenses Paid', 'Record reimbursement payment for approved claims'],
+            MANAGE_EXPENSE_SETTINGS: ['Manage Expense Settings', 'Configure categories, kilometre rates, limits, and approval thresholds'],
+            VIEW_EXPENSE_REPORTS: ['View Expense Reports', 'View expense summaries within the user’s data-access scope'],
+          };
+          const [label, desc] = description[key] || [key, 'Configure access for this capability'];
+          return { key, label, desc };
+        }));
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Failed to load permissions');
       } finally {
@@ -49,6 +78,7 @@ export const PermissionsView: React.FC = () => {
 
   const handleToggle = (role: 'ADMIN' | 'EMPLOYEE', action: PermissionAction) => {
     if (!permissions) return;
+    if (role === 'ADMIN' && protectedAdminPermissions.includes(action)) return;
     const current = permissions[role] || [];
     const hasIt = current.includes(action);
 
@@ -61,6 +91,31 @@ export const PermissionsView: React.FC = () => {
       [role]: updated,
     });
     setSaveSuccess(false);
+  };
+
+  const handleUserOverrideChange = async (permission: PermissionAction, value: string) => {
+    const target = users.find((candidate) => candidate.id === selectedUserId);
+    if (!target || target.id === currentUser?.id || protectedAdminPermissions.includes(permission)) return;
+    const permissionOverrides = { ...(target.permissionOverrides || {}) };
+    if (value === 'inherit') {
+      delete permissionOverrides[permission];
+    } else {
+      permissionOverrides[permission] = value === 'allow';
+    }
+    setIsSavingUser(true);
+    setError(null);
+    try {
+      const result = await api.updateUserPermissions(target.id, permissionOverrides);
+      setUsers((previous) => previous.map((candidate) =>
+        candidate.id === target.id ? { ...candidate, permissionOverrides: result.permissionOverrides } : candidate
+      ));
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to save user permissions');
+    } finally {
+      setIsSavingUser(false);
+    }
   };
 
   const handleSave = async () => {
@@ -98,7 +153,7 @@ export const PermissionsView: React.FC = () => {
           <div>
             <h2 className="text-base font-bold text-slate-900">Role-Based Access Control (RBAC)</h2>
             <p className="text-xs text-slate-500">
-              Configure fine-grained system capabilities for ADMIN and EMPLOYEE roles
+                Configure role access and individual user overrides. Critical admin rights are protected.
             </p>
           </div>
         </div>
@@ -159,8 +214,12 @@ export const PermissionsView: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => handleToggle('ADMIN', perm.key)}
+                        disabled={protectedAdminPermissions.includes(perm.key)}
+                        aria-label={`${perm.label}: toggle ADMIN permission`}
                         className={`w-6 h-6 rounded flex items-center justify-center mx-auto transition-colors ${
-                          adminHas
+                          protectedAdminPermissions.includes(perm.key)
+                            ? 'bg-indigo-600 text-white opacity-60 cursor-not-allowed'
+                            : adminHas
                             ? 'bg-indigo-600 text-white'
                             : 'border border-slate-300 text-transparent hover:border-slate-400'
                         }`}
@@ -174,6 +233,7 @@ export const PermissionsView: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => handleToggle('EMPLOYEE', perm.key)}
+                        aria-label={`${perm.label}: toggle EMPLOYEE permission`}
                         className={`w-6 h-6 rounded flex items-center justify-center mx-auto transition-colors ${
                           employeeHas
                             ? 'bg-emerald-600 text-white'
@@ -190,6 +250,64 @@ export const PermissionsView: React.FC = () => {
           </table>
         </div>
       </div>
+
+      <section className="bg-white rounded-xl border border-slate-200 shadow-2xs p-4 space-y-3">
+        <div>
+          <h3 className="text-sm font-bold text-slate-900">Individual User Overrides</h3>
+          <p className="text-xs text-slate-500">Choose inherit, allow, or deny for each capability. Your own permissions and critical admin privileges cannot be changed here.</p>
+        </div>
+        <label className="block text-xs font-semibold text-slate-700">
+          User
+          <select
+            value={selectedUserId}
+            onChange={(event) => setSelectedUserId(event.target.value)}
+            className="mt-1 block w-full sm:max-w-sm rounded-lg border border-slate-300 bg-white p-2 text-slate-900"
+          >
+            <option value="">Select a user</option>
+            {users.filter((candidate) => candidate.id !== currentUser?.id).map((candidate) => (
+              <option key={candidate.id} value={candidate.id}>{candidate.name} ({candidate.id}, {candidate.role})</option>
+            ))}
+          </select>
+        </label>
+        {selectedUserId && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 text-slate-600 uppercase">
+                <tr><th className="p-2">Permission</th><th className="p-2">Role grants</th><th className="p-2">User override</th><th className="p-2">Effective access</th></tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {permissionList.map((permission) => {
+                  const selectedUser = users.find((candidate) => candidate.id === selectedUserId);
+                  const override = selectedUser?.permissionOverrides?.[permission.key];
+                  const roleHas = Boolean(selectedUser && permissions?.[selectedUser.role].includes(permission.key));
+                  const effective = override === null || override === undefined ? roleHas : override;
+                  const protectedPermission = protectedAdminPermissions.includes(permission.key);
+                  return (
+                    <tr key={permission.key}>
+                      <td className="p-2 font-medium text-slate-800">{permission.label}</td>
+                      <td className="p-2 text-slate-600">{roleHas ? 'Allowed' : 'Denied'}</td>
+                      <td className="p-2">
+                        <select
+                          value={override === null || override === undefined ? 'inherit' : override ? 'allow' : 'deny'}
+                          disabled={protectedPermission || isSavingUser}
+                          onChange={(event) => handleUserOverrideChange(permission.key, event.target.value)}
+                          className="rounded border border-slate-300 bg-white p-1 text-slate-800 disabled:opacity-50"
+                        >
+                          <option value="inherit">Inherit from role</option>
+                          <option value="allow">Allow</option>
+                          <option value="deny">Deny</option>
+                        </select>
+                        {protectedPermission && <span className="ml-2 text-slate-500">Protected</span>}
+                      </td>
+                      <td className="p-2 font-semibold">{effective ? 'Allowed' : 'Denied'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
 };

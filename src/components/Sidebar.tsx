@@ -17,11 +17,14 @@ import {
   ShieldAlert,
   History,
   Settings,
+  Building2,
+  Receipt,
   LogOut,
-  Briefcase,
   X,
 } from 'lucide-react';
 import { RoleBadge } from './Badge';
+import { DEFAULT_BRANDING } from '../branding';
+import { BrandingSettings } from '../types';
 
 export type NavTab =
   | 'dashboard'
@@ -34,7 +37,9 @@ export type NavTab =
   | 'users'
   | 'permissions'
   | 'activity_log'
-  | 'settings';
+  | 'settings'
+  | 'branding'
+  | 'expenses';
 
 interface SidebarProps {
   currentTab: NavTab;
@@ -45,6 +50,7 @@ interface SidebarProps {
   isOpenMobile: boolean;
   onCloseMobile: () => void;
   onOpenMyAccount: () => void;
+  branding?: BrandingSettings;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -56,6 +62,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpenMobile,
   onCloseMobile,
   onOpenMyAccount,
+  branding = DEFAULT_BRANDING,
 }) => {
   const { user, isAdmin, hasPermission, logout } = useAuth();
 
@@ -69,26 +76,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'dashboard' as NavTab,
       label: isAdmin ? 'Admin Dashboard' : 'My Dashboard',
       icon: LayoutDashboard,
-      show: true,
+      show: hasPermission('VIEW_DASHBOARD'),
     },
     {
       id: 'all_tasks' as NavTab,
       label: 'All Office Tasks',
       icon: CheckSquare,
-      show: isAdmin || hasPermission('VIEW_ALL_TASKS'),
+      show: hasPermission('VIEW_ALL_TASKS'),
     },
     {
       id: 'my_tasks' as NavTab,
       label: 'My Tasks',
       icon: ListTodo,
-      show: true,
+      show: hasPermission('VIEW_ALL_TASKS') || hasPermission('VIEW_OWN_TASKS'),
     },
     {
       id: 'pending_approvals' as NavTab,
       label: 'Pending Approvals',
       icon: Clock,
       badge: pendingApprovalsCount,
-      show: isAdmin || hasPermission('APPROVE_TASK') || !!isApproverOnAnyTask || pendingApprovalsCount > 0,
+      show: (hasPermission('APPROVE_TASK') && (isAdmin || pendingApprovalsCount > 0)) ||
+        (hasPermission('REJECT_TASK') && !!isApproverOnAnyTask && pendingApprovalsCount > 0),
     },
     {
       id: 'create_task' as NavTab,
@@ -134,6 +142,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Settings,
       show: hasPermission('MANAGE_SETTINGS'),
     },
+    {
+      id: 'branding' as NavTab,
+      label: 'Branding Settings',
+      icon: Building2,
+      show: hasPermission('MANAGE_SETTINGS'),
+    },
+    {
+      id: 'expenses' as NavTab,
+      label: 'Expenses',
+      icon: Receipt,
+      show: hasPermission('VIEW_OWN_EXPENSES') || hasPermission('VIEW_ALL_EXPENSES') ||
+        hasPermission('CREATE_EXPENSE') || hasPermission('APPROVE_EXPENSE') ||
+        hasPermission('REJECT_EXPENSE') || hasPermission('PAY_EXPENSE') ||
+        hasPermission('MANAGE_EXPENSE_SETTINGS') || hasPermission('VIEW_EXPENSE_REPORTS'),
+    },
   ];
 
   return (
@@ -154,12 +177,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Brand header */}
         <div className="h-16 flex items-center justify-between px-5 border-b border-slate-800">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center text-white">
-              <Briefcase className="w-4 h-4" />
-            </div>
+            <img src={branding.logoUrl || DEFAULT_BRANDING.logoUrl} alt="" className="h-9 w-auto shrink-0 object-contain" />
             <div>
-              <h2 className="text-sm font-bold text-white tracking-tight">Office Task Manager</h2>
-              <p className="text-[10px] text-slate-400 font-medium">PaisaFin Workspace</p>
+              <h2 className="text-sm font-bold text-white tracking-tight">{branding.appName}</h2>
+              <p className="text-[10px] text-slate-400 font-medium">{branding.companyName} Workspace</p>
             </div>
           </div>
           <button

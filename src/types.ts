@@ -14,6 +14,7 @@ export interface User {
   status: UserStatus;
   createdAt: string;
   lastLoginAt?: string;
+  permissionOverrides?: Partial<Record<Permission, boolean | null>>;
 }
 
 export type Permission =
@@ -38,7 +39,78 @@ export type Permission =
   | 'VIEW_ACTIVITY_LOG'
   | 'MANAGE_USERS'
   | 'MANAGE_PERMISSIONS'
-  | 'MANAGE_SETTINGS';
+  | 'MANAGE_SETTINGS'
+  | 'VIEW_OWN_EXPENSES'
+  | 'CREATE_EXPENSE'
+  | 'SUBMIT_EXPENSE'
+  | 'VIEW_ALL_EXPENSES'
+  | 'APPROVE_EXPENSE'
+  | 'REJECT_EXPENSE'
+  | 'PAY_EXPENSE'
+  | 'MANAGE_EXPENSE_SETTINGS'
+  | 'VIEW_EXPENSE_REPORTS';
+
+export type ExpenseStatus = 'DRAFT' | 'SUBMITTED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'PAID';
+export type ExpenseCalculationMode = 'AMOUNT' | 'KILOMETRE';
+
+export interface ExpenseCategory {
+  id: string;
+  name: string;
+  enabled: boolean;
+  calculationMode: ExpenseCalculationMode;
+  receiptRequired: boolean;
+}
+
+export interface ExpenseRate {
+  id: string;
+  vehicleType: string;
+  ratePerKm: number;
+  effectiveDate: string;
+  categoryIds: string[];
+}
+
+export interface ExpenseSettings {
+  categories: ExpenseCategory[];
+  rates: ExpenseRate[];
+  maxAmount: number;
+  maxKilometres: number;
+  approvalThreshold: number;
+}
+
+export interface Expense {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  date: string;
+  categoryId: string;
+  categoryName: string;
+  description: string;
+  calculationMode: ExpenseCalculationMode;
+  amount: number;
+  kilometres?: number;
+  vehicleType?: string;
+  ratePerKm?: number;
+  rateEffectiveDate?: string;
+  receiptFile?: string;
+  receiptName?: string;
+  receiptType?: string;
+  travelFrom?: string;
+  travelTo?: string;
+  remarks?: string;
+  status: ExpenseStatus;
+  rejectionReason?: string;
+  submittedAt?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  reviewedByName?: string;
+  paymentDate?: string;
+  paymentReference?: string;
+  paymentRemarks?: string;
+  paidBy?: string;
+  paidByName?: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export type TaskStatus =
   | 'Not Started'
@@ -145,11 +217,18 @@ export interface OfficeSettings {
 export interface AppSettings {
   companyName: string;
   appName: string;
+  logoUrl?: string | null;
   defaultTaskPriority: TaskPriority;
   defaultTaskStatus: TaskStatus;
   sessionTimeoutMinutes: number;
   enableDeadlineNotifications: boolean;
   notificationAdvanceDays: number;
+}
+
+export interface BrandingSettings {
+  companyName: string;
+  appName: string;
+  logoUrl: string | null;
 }
 
 export interface RolePermissions {

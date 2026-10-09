@@ -3,10 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Briefcase, Lock, Mail, Eye, EyeOff, AlertCircle, Smartphone, Download, Copy } from 'lucide-react';
-import { getDeviceType, getMobileInstallSteps, buildDownloadText } from '../utils/mobileInstall';
+import { Lock, Mail, Eye, EyeOff, AlertCircle, Smartphone, Download, Copy } from 'lucide-react';
+import { getDeviceType, getMobileInstallSteps } from '../utils/mobileInstall';
+import { api } from '../api';
+import { BrandingSettings } from '../types';
+import { applyBranding, DEFAULT_BRANDING } from '../branding';
 
 export const LoginScreen: React.FC = () => {
   const { login, error, setError } = useAuth();
@@ -15,22 +18,23 @@ export const LoginScreen: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copyStatus, setCopyStatus] = useState('');
+  const [branding, setBranding] = useState<BrandingSettings>(DEFAULT_BRANDING);
   const deviceType = getDeviceType();
   const installSteps = getMobileInstallSteps(deviceType);
   const appLink = typeof window !== 'undefined' ? window.location.href : 'https://your-domain.com';
 
-  const handleDownloadAppInstructions = () => {
-    const fileContent = buildDownloadText(appLink, deviceType);
-    const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'office-task-manager-install.txt';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  };
+  useEffect(() => {
+    let isMounted = true;
+    api.getBranding().then((currentBranding) => {
+      if (isMounted) {
+        setBranding(currentBranding);
+        applyBranding(currentBranding);
+      }
+    }).catch((brandingError: unknown) => {
+      console.error('Could not load application branding', brandingError);
+    });
+    return () => { isMounted = false; };
+  }, []);
 
   const handleCopyLink = async () => {
     try {
@@ -59,12 +63,10 @@ export const LoginScreen: React.FC = () => {
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 text-slate-800">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center items-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-sm">
-            <Briefcase className="w-6 h-6" />
-          </div>
+          <img src={branding.logoUrl || DEFAULT_BRANDING.logoUrl} alt="" className="h-12 w-auto shrink-0 object-contain" />
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Office Task Manager</h1>
-            <p className="text-xs text-slate-500 font-medium">PaisaFin Team Workflow Portal</p>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">{branding.appName}</h1>
+            <p className="text-xs text-slate-500 font-medium">{branding.companyName} Team Workflow Portal</p>
           </div>
         </div>
         <h2 className="mt-6 text-center text-xl font-semibold tracking-tight text-slate-900">
@@ -94,22 +96,14 @@ export const LoginScreen: React.FC = () => {
               </li>
             ))}
           </ol>
-          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <div className="mt-4">
             <a
               href={appLink}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-indigo-700 border border-indigo-200 hover:bg-indigo-100"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
             >
               <Download className="w-4 h-4" />
               Open app link
             </a>
-            <button
-              type="button"
-              onClick={handleDownloadAppInstructions}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
-            >
-              <Download className="w-4 h-4" />
-              Download link
-            </button>
           </div>
           <button
             type="button"
@@ -204,7 +198,7 @@ export const LoginScreen: React.FC = () => {
 
         <div className="mt-4 text-center">
           <p className="text-xs text-slate-500">
-            PaisaFin Office Task Manager &bull; 100% Free Self-Contained Built-in Storage
+            {branding.companyName} &bull; {branding.appName}
           </p>
         </div>
       </div>

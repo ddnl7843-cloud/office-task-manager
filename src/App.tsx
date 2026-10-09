@@ -21,18 +21,22 @@ import { NotificationsView } from './components/NotificationsView';
 import { PermissionsView } from './components/PermissionsView';
 import { ActivityLogView } from './components/ActivityLogView';
 import { SettingsView } from './components/SettingsView';
+import { BrandingSettingsView } from './components/BrandingSettingsView';
+import { ExpenseManagementView } from './components/ExpenseManagementView';
 import { MyAccountModal } from './components/MyAccountModal';
 import { api } from './api';
-import { Task, User, AppNotification } from './types';
+import { Task, User, AppNotification, BrandingSettings } from './types';
 import { AlertCircle, RefreshCw } from 'lucide-react';
+import { applyBranding, DEFAULT_BRANDING } from './branding';
 
 const MainApp: React.FC = () => {
-  const { user, isAdmin, hasPermission, isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { user, isAdmin, hasPermission, refreshUser, isAuthenticated, isLoading: isAuthLoading } = useAuth();
 
   const [currentTab, setCurrentTab] = useState<NavTab>('dashboard');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [branding, setBranding] = useState<BrandingSettings>(DEFAULT_BRANDING);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
 
@@ -49,6 +53,7 @@ const MainApp: React.FC = () => {
     try {
       setIsLoadingData(true);
       setDataError(null);
+      await refreshUser();
       const [fetchedTasks, fetchedUsers, fetchedNotifications] = await Promise.all([
         api.getTasks(),
         api.getUsers(),
@@ -64,13 +69,27 @@ const MainApp: React.FC = () => {
     } finally {
       setIsLoadingData(false);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, refreshUser]);
 
   useEffect(() => {
     if (isAuthenticated) {
       fetchData();
     }
   }, [isAuthenticated, fetchData]);
+
+  useEffect(() => {
+    let isMounted = true;
+    api.getBranding().then((currentBranding) => {
+      if (isMounted) setBranding(currentBranding);
+    }).catch((error: unknown) => {
+      console.error('Could not load application branding', error);
+    });
+    return () => { isMounted = false; };
+  }, []);
+
+  useEffect(() => {
+    applyBranding(branding);
+  }, [branding]);
 
   // Periodic refresh every 30 seconds for live collaboration
   useEffect(() => {
@@ -81,13 +100,40 @@ const MainApp: React.FC = () => {
     return () => clearInterval(interval);
   }, [isAuthenticated, fetchData]);
 
+  useEffect(() => {
+    const requiredPermission: Partial<Record<NavTab, import('./types').Permission>> = {
+      dashboard: 'VIEW_DASHBOARD',
+      all_tasks: 'VIEW_ALL_TASKS',
+      my_tasks: 'VIEW_OWN_TASKS',
+      pending_approvals: 'APPROVE_TASK',
+      reports: 'VIEW_REPORTS',
+      users: 'MANAGE_USERS',
+      permissions: 'MANAGE_PERMISSIONS',
+      activity_log: 'VIEW_ACTIVITY_LOG',
+      settings: 'MANAGE_SETTINGS',
+      branding: 'MANAGE_SETTINGS',
+    };
+    const permission = requiredPermission[currentTab];
+    if (permission && !hasPermission(permission)) setCurrentTab('notifications');
+    if (currentTab === 'my_tasks' && !hasPermission('VIEW_OWN_TASKS') && !hasPermission('VIEW_ALL_TASKS')) {
+      setCurrentTab('notifications');
+    }
+    if (currentTab === 'expenses' && !hasPermission('VIEW_OWN_EXPENSES') &&
+      !hasPermission('VIEW_ALL_EXPENSES') && !hasPermission('CREATE_EXPENSE') &&
+      !hasPermission('APPROVE_EXPENSE') && !hasPermission('REJECT_EXPENSE') &&
+      !hasPermission('PAY_EXPENSE') && !hasPermission('MANAGE_EXPENSE_SETTINGS') &&
+      !hasPermission('VIEW_EXPENSE_REPORTS')) {
+      setCurrentTab('notifications');
+    }
+  }, [currentTab, hasPermission]);
+
   // If not authenticated or checking token
   if (isAuthLoading) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
         <div className="text-center text-white space-y-3">
           <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-xs font-semibold text-slate-300">Initializing Office Task Manager...</p>
+          <p className="text-xs font-semibold text-slate-300">Initializing {branding.appName}...</p>
         </div>
       </div>
     );
@@ -99,7 +145,8 @@ const MainApp: React.FC = () => {
 
   // Pending approvals count for header/sidebar badge
   const pendingApprovalsCount = tasks.filter(
-    (t) => t.status === 'Completion Requested' || t.approvalStatus === 'Pending'
+    (t) => (t.status === 'Completion Requested' || t.approvalStatus === 'Pending') &&
+      (t.approver === user.id || hasPermission('APPROVE_TASK'))
   ).length;
 
   const unreadNotificationsCount = notifications.filter((n) => !n.read).length;
@@ -205,8 +252,18 @@ const MainApp: React.FC = () => {
           title: 'Office Settings',
           subtitle: 'Configure company profile, thresholds, and zero-cost backups',
         };
+      case 'branding':
+        return {
+          title: 'Branding Settings',
+          subtitle: 'Configure the application name, company name, and logo',
+        };
+      case 'expenses':
+        return {
+          title: 'Expense Management',
+          subtitle: 'Submit, review, and track employee expenses and reimbursements',
+        };
       default:
-        return { title: 'Office Task Manager', subtitle: 'PaisaFin Workspace' };
+        return { title: branding.appName, subtitle: `${branding.companyName} Workspace` };
     }
   };
 
@@ -222,10 +279,12 @@ const MainApp: React.FC = () => {
         currentTab={currentTab}
         onSelectTab={handleTabChange}
         pendingApprovalsCount={pendingApprovalsCount}
+        isApproverOnAnyTask={tasks.some((task) => task.approver === user.id)}
         unreadNotificationsCount={unreadNotificationsCount}
         isOpenMobile={isMobileMenuOpen}
         onCloseMobile={() => setIsMobileMenuOpen(false)}
         onOpenMyAccount={() => setIsMyAccountModalOpen(true)}
+        branding={branding}
       />
 
       {/* Main Content Area */}
@@ -234,6 +293,7 @@ const MainApp: React.FC = () => {
         <Header
           title={headerInfo.title}
           subtitle={headerInfo.subtitle}
+          branding={branding}
           unreadNotificationsCount={unreadNotificationsCount}
           onOpenNotifications={() => setCurrentTab('notifications')}
           onOpenCreateTask={() => setIsCreateTaskModalOpen(true)}
@@ -287,7 +347,7 @@ const MainApp: React.FC = () => {
               users={users}
               isAllTasksView={true}
               onSelectTask={handleSelectTask}
-              onEditTask={isAdmin ? handleEditTask : undefined}
+              onEditTask={hasPermission('EDIT_TASK') ? handleEditTask : undefined}
               onDeleteTask={hasPermission('DELETE_TASK') ? handleDeleteTask : undefined}
               onCreateTask={hasPermission('CREATE_TASK') ? () => setIsCreateTaskModalOpen(true) : undefined}
             />
@@ -299,7 +359,7 @@ const MainApp: React.FC = () => {
               users={users}
               isAllTasksView={false}
               onSelectTask={handleSelectTask}
-              onEditTask={isAdmin ? handleEditTask : undefined}
+              onEditTask={hasPermission('EDIT_TASK') ? handleEditTask : undefined}
               onDeleteTask={hasPermission('DELETE_TASK') ? handleDeleteTask : undefined}
             />
           )}
@@ -338,6 +398,13 @@ const MainApp: React.FC = () => {
           {currentTab === 'activity_log' && <ActivityLogView />}
 
           {currentTab === 'settings' && <SettingsView />}
+          {currentTab === 'branding' && (
+            <BrandingSettingsView
+              branding={branding}
+              onSaved={(updatedBranding) => setBranding(updatedBranding)}
+            />
+          )}
+          {currentTab === 'expenses' && <ExpenseManagementView users={users} />}
         </main>
       </div>
 
@@ -348,8 +415,9 @@ const MainApp: React.FC = () => {
           users={users}
           onClose={() => setSelectedTaskForDetails(null)}
           onTaskUpdated={handleTaskUpdated}
-          onOpenEdit={handleEditTask}
+          onOpenEdit={hasPermission('EDIT_TASK') ? handleEditTask : undefined}
           onDeleteTask={hasPermission('DELETE_TASK') ? handleDeleteTask : undefined}
+          branding={branding}
         />
       )}
 
