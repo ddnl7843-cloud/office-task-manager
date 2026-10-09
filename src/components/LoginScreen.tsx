@@ -5,23 +5,31 @@
 
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Lock, Mail, Eye, EyeOff, AlertCircle, Smartphone, Download, Copy } from 'lucide-react';
-import { getDeviceType, getMobileInstallSteps } from '../utils/mobileInstall';
+import { Lock, Mail, Eye, EyeOff, AlertCircle, Smartphone, Download, UserRound } from 'lucide-react';
+import { getDeviceType, getMobileInstallSteps, isAppInstalled } from '../utils/mobileInstall';
 import { api } from '../api';
 import { BrandingSettings } from '../types';
 import { applyBranding, DEFAULT_BRANDING } from '../branding';
+import { ShareAppButton } from './ShareAppButton';
 
 export const LoginScreen: React.FC = () => {
   const { login, error, setError } = useAuth();
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [signupName, setSignupName] = useState('');
+  const [signupEmail, setSignupEmail] = useState('');
+  const [signupPassword, setSignupPassword] = useState('');
+  const [signupPasswordConfirm, setSignupPasswordConfirm] = useState('');
+  const [signupError, setSignupError] = useState('');
+  const [signupSuccess, setSignupSuccess] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [copyStatus, setCopyStatus] = useState('');
   const [branding, setBranding] = useState<BrandingSettings>(DEFAULT_BRANDING);
   const deviceType = getDeviceType();
   const installSteps = getMobileInstallSteps(deviceType);
-  const appLink = typeof window !== 'undefined' ? window.location.href : 'https://your-domain.com';
+  const showInstallHelp = !isAppInstalled();
+  const appLink = typeof window !== 'undefined' ? window.location.origin : 'https://fintask.paisafin.com';
 
   useEffect(() => {
     let isMounted = true;
@@ -36,16 +44,6 @@ export const LoginScreen: React.FC = () => {
     return () => { isMounted = false; };
   }, []);
 
-  const handleCopyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(appLink);
-      setCopyStatus('Link copied');
-    } catch {
-      setCopyStatus('Copy blocked by browser');
-    }
-    window.setTimeout(() => setCopyStatus(''), 2000);
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) return;
@@ -54,6 +52,36 @@ export const LoginScreen: React.FC = () => {
       await login(email, password);
     } catch {
       // Handled in context
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSignup = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSignupError('');
+    setSignupSuccess('');
+    if (signupPassword !== signupPasswordConfirm) {
+      setSignupError('Passwords do not match.');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const response = await api.requestSignup({
+        name: signupName,
+        email: signupEmail,
+        password: signupPassword,
+      });
+      setSignupSuccess(response.message);
+      setEmail(signupEmail.trim());
+      setPassword('');
+      setSignupName('');
+      setSignupEmail('');
+      setSignupPassword('');
+      setSignupPasswordConfirm('');
+      setMode('signin');
+    } catch (signupRequestError: unknown) {
+      setSignupError(signupRequestError instanceof Error ? signupRequestError.message : 'Could not send signup request');
     } finally {
       setIsSubmitting(false);
     }
@@ -70,7 +98,7 @@ export const LoginScreen: React.FC = () => {
           </div>
         </div>
         <h2 className="mt-6 text-center text-xl font-semibold tracking-tight text-slate-900">
-          Sign in to your workplace account
+          {mode === 'signin' ? 'Sign in to your workplace account' : 'Request a workplace account'}
         </h2>
         <p className="mt-1 text-center text-sm text-slate-600">
           Secure task assignment, progress tracking & review portal
@@ -78,6 +106,14 @@ export const LoginScreen: React.FC = () => {
       </div>
 
       <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="mb-4 flex justify-end">
+          <ShareAppButton
+            appName={branding.appName}
+            className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+          />
+        </div>
+
+        {showInstallHelp && (
         <div className="mb-5 rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-slate-700 shadow-sm">
           <div className="flex items-center gap-2 text-indigo-700 font-semibold text-sm">
             <Smartphone className="w-4 h-4" />
@@ -105,18 +141,16 @@ export const LoginScreen: React.FC = () => {
               Open app link
             </a>
           </div>
-          <button
-            type="button"
-            onClick={handleCopyLink}
-            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-          >
-            <Copy className="w-4 h-4" />
-            {copyStatus || 'Copy install link'}
-          </button>
         </div>
+        )}
 
         <div className="bg-white py-8 px-6 shadow-sm border border-slate-200 rounded-xl sm:px-10">
-          {error && (
+          {signupSuccess && (
+            <div role="status" className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 p-3.5 text-sm text-emerald-800">
+              {signupSuccess}
+            </div>
+          )}
+          {mode === 'signin' && error && (
             <div className="mb-5 rounded-lg bg-rose-50 border border-rose-200 p-3.5 flex items-start gap-3 text-rose-800 text-sm">
               <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" />
               <div>
@@ -126,7 +160,7 @@ export const LoginScreen: React.FC = () => {
             </div>
           )}
 
-          <form className="space-y-4" onSubmit={handleSubmit}>
+          {mode === 'signin' ? <form className="space-y-4" onSubmit={handleSubmit}>
             <div>
               <label htmlFor="email" className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
                 Work Email Address
@@ -192,7 +226,51 @@ export const LoginScreen: React.FC = () => {
                 'Sign In'
               )}
             </button>
-          </form>
+          </form> : (
+            <form className="space-y-4" onSubmit={handleSignup}>
+              <div className="flex items-start gap-2 rounded-lg border border-indigo-100 bg-indigo-50 p-3 text-xs text-indigo-900">
+                <UserRound className="mt-0.5 h-4 w-4 shrink-0" />
+                <p>New accounts are reviewed by an administrator. You can sign in after your request is approved.</p>
+              </div>
+              {signupError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">{signupError}</div>}
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700">
+                Full name
+                <input required maxLength={100} autoComplete="name" value={signupName} onChange={event => setSignupName(event.target.value)} className="mt-1.5 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm normal-case text-slate-900" />
+              </label>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700">
+                Work email
+                <input required type="email" maxLength={254} autoComplete="email" value={signupEmail} onChange={event => setSignupEmail(event.target.value)} placeholder="name@paisafin.com" className="mt-1.5 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm normal-case text-slate-900" />
+              </label>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700">
+                Password
+                <input required type="password" minLength={10} maxLength={128} autoComplete="new-password" value={signupPassword} onChange={event => setSignupPassword(event.target.value)} className="mt-1.5 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm normal-case text-slate-900" />
+                <span className="mt-1 block text-[11px] font-normal normal-case text-slate-500">Use at least 10 characters.</span>
+              </label>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700">
+                Confirm password
+                <input required type="password" minLength={10} maxLength={128} autoComplete="new-password" value={signupPasswordConfirm} onChange={event => setSignupPasswordConfirm(event.target.value)} className="mt-1.5 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm normal-case text-slate-900" />
+              </label>
+              <button type="submit" disabled={isSubmitting} className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60">
+                {isSubmitting ? 'Sending request…' : 'Request account approval'}
+              </button>
+            </form>
+          )}
+
+          <div className="mt-5 border-t border-slate-100 pt-4 text-center text-xs text-slate-600">
+            {mode === 'signin' ? "Don't have an account?" : 'Already have an account?'}{' '}
+            <button
+              type="button"
+              onClick={() => {
+                setMode(mode === 'signin' ? 'signup' : 'signin');
+                setSignupError('');
+                setSignupSuccess('');
+                setError(null);
+              }}
+              className="font-semibold text-indigo-700 hover:underline"
+            >
+              {mode === 'signin' ? 'Sign up' : 'Sign in'}
+            </button>
+          </div>
 
         </div>
 

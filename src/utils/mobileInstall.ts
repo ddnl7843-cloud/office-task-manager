@@ -1,7 +1,19 @@
 export type MobileDeviceType = 'android' | 'ios' | 'desktop';
 
+export function isInstalledDisplayMode(displayMode: string | null | undefined, iosStandalone: boolean): boolean {
+  return displayMode === 'standalone' || displayMode === 'fullscreen' || iosStandalone;
+}
+
+export function isAppInstalled(): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  const displayMode = window.matchMedia?.('(display-mode: standalone)').matches ? 'standalone' : null;
+  const iosStandalone = (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  return isInstalledDisplayMode(displayMode, iosStandalone);
+}
+
 export function getDeviceType(userAgent?: string): MobileDeviceType {
-  const ua = (userAgent || navigator?.userAgent || '').toLowerCase();
+  const currentUserAgent = typeof navigator === 'undefined' ? '' : navigator.userAgent;
+  const ua = (userAgent || currentUserAgent).toLowerCase();
 
   if (/iphone|ipad|ipod/.test(ua)) return 'ios';
   if (/android/.test(ua)) return 'android';

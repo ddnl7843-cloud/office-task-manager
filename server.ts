@@ -20,6 +20,7 @@ import {
 import { emailService } from './server/email';
 import { getAccessibleExpenseRecords } from './server/expenseAccess';
 import { calculateKilometreExpense, selectEffectiveExpenseRate } from './server/expensePolicy';
+import { validateSignupRequest } from './server/signup';
 import {
   Expense,
   ExpenseCategory,
@@ -197,6 +198,39 @@ async function startServer() {
   // -------------------------------------------------------------
   // AUTH ROUTES
   // -------------------------------------------------------------
+  app.post('/api/auth/signup', (req: Request, res: Response) => {
+    const result = validateSignupRequest(req.body);
+    if (!result.request) return res.status(400).json({ error: result.error });
+    if (db.getUserByEmail(result.request.email)) {
+      return res.status(409).json({ error: 'An account with this email already exists. Please sign in or contact an administrator.' });
+    }
+
+    const { hash, salt } = hashPassword(result.request.password);
+    const user = {
+      id: db.getNextUserId(),
+      name: result.request.name,
+      email: result.request.email,
+      role: result.request.role,
+      status: result.request.status,
+      createdAt: new Date().toISOString(),
+      passwordHash: hash,
+      salt,
+    };
+    db.getData().users.push(user);
+    db.save();
+    db.logActivity({
+      userId: user.id,
+      userName: user.name,
+      userRole: user.role,
+      action: 'SIGNUP_REQUESTED',
+      description: `New employee signup request submitted for ${user.email}`,
+    });
+    return res.status(201).json({
+      success: true,
+      message: 'Your request was sent. You can sign in after an administrator approves your account.',
+    });
+  });
+
   app.post('/api/auth/login', (req: Request, res: Response) => {
     const { email, password } = req.body;
     if (typeof email !== 'string' || typeof password !== 'string' || !email.trim() || !password) {
@@ -208,13 +242,15 @@ async function startServer() {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    if (user.status !== 'ACTIVE') {
-      return res.status(403).json({ error: 'Account is deactivated. Please contact your office administrator.' });
-    }
-
     const isValid = verifyPassword(password, user.passwordHash, user.salt);
     if (!isValid) {
       return res.status(401).json({ error: 'Invalid email or password' });
+    }
+    if (user.status === 'PENDING') {
+      return res.status(403).json({ error: 'Your signup request is waiting for administrator approval.' });
+    }
+    if (user.status !== 'ACTIVE') {
+      return res.status(403).json({ error: 'Account is deactivated. Please contact your office administrator.' });
     }
     if (isLegacyPassword(password, user.passwordHash, user.salt)) {
       const upgradedHash = hashPassword(password);
@@ -1724,18 +1760,10 @@ async function startServer() {
       return res.status(400).json({ error: 'A user with this email address already exists' });
     }
 
-    let userCount = db.getData().users.reduce((max, user) => {
-      const numericId = /^U(\d+)$/i.exec(user.id);
-      return numericId ? Math.max(max, Number(numericId[1])) : max;
-    }, 0) + 1;
-    let nextId = `U${String(userCount).padStart(3, '0')}`;
-    while (db.getUserById(nextId)) {
-      nextId = `U${String(++userCount).padStart(3, '0')}`;
-    }
     const { hash, salt } = hashPassword(password);
 
     const newUser = {
-      id: nextId,
+      id: db.getNextUserId(),
       name: name.trim(),
       email: normalizedEmail,
       role: role as UserRole,
@@ -1785,7 +1813,7 @@ async function startServer() {
     if (role !== undefined && !['ADMIN', 'EMPLOYEE'].includes(role)) {
       return res.status(400).json({ error: 'Invalid user role' });
     }
-    if (status !== undefined && !['ACTIVE', 'INACTIVE'].includes(status)) {
+    if (status !== undefined && !['ACTIVE', 'INACTIVE', 'PENDING'].includes(status)) {
       return res.status(400).json({ error: 'Invalid user status' });
     }
     if (newPassword !== undefined && (typeof newPassword !== 'string' || newPassword.length < 10)) {
@@ -1800,10 +1828,11 @@ async function startServer() {
         return res.status(400).json({ error: 'Cannot demote or deactivate the last active administrator' });
       }
     }
-    if (req.user!.id === user.id && status === 'INACTIVE') {
-      return res.status(400).json({ error: 'You cannot deactivate your own active account' });
+    if (req.user!.id === user.id && status !== undefined && status !== 'ACTIVE') {
+      return res.status(400).json({ error: 'You cannot deactivate or suspend your own active account' });
     }
 
+    const previousStatus = user.status;
     if (name !== undefined) user.name = name.trim();
     if (email !== undefined) user.email = email.trim().toLowerCase();
     if (role !== undefined) user.role = role as UserRole;
@@ -1815,7 +1844,7 @@ async function startServer() {
       user.salt = salt;
     }
 
-    if (user.status === 'INACTIVE') {
+    if (user.status !== 'ACTIVE') {
       db.getData().sessions = db.getData().sessions.filter(session => session.userId !== user.id);
     }
     db.save();
@@ -1824,8 +1853,12 @@ async function startServer() {
       userId: req.user!.id,
       userName: req.user!.name,
       userRole: req.user!.role,
-      action: 'USER_UPDATED',
-      description: `Updated profile for user ${user.name} (${user.id})`,
+      action: status === 'ACTIVE' && previousStatus === 'PENDING' ? 'USER_APPROVED'
+        : status === 'INACTIVE' && previousStatus !== 'INACTIVE' ? 'USER_DEACTIVATED'
+          : 'USER_UPDATED',
+      description: status === 'ACTIVE' && previousStatus === 'PENDING' ? `Approved account for user ${user.name} (${user.id})`
+        : status === 'INACTIVE' && previousStatus !== 'INACTIVE' ? `Deactivated account for user ${user.name} (${user.id})`
+          : `Updated profile for user ${user.name} (${user.id})`,
     });
 
     const { passwordHash, salt, ...publicUser } = user;

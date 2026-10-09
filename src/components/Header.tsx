@@ -9,6 +9,7 @@ import { Menu, Bell, Plus, UserCircle, LogOut } from 'lucide-react';
 import { RoleBadge } from './Badge';
 import { DEFAULT_BRANDING } from '../branding';
 import { BrandingSettings } from '../types';
+import { ShareAppButton } from './ShareAppButton';
 
 interface HeaderProps {
   title: string;
@@ -57,6 +58,11 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Right side: quick actions, notifications, user */}
       <div className="flex items-center gap-2 sm:gap-3">
+        <ShareAppButton
+          appName={branding.appName}
+          compact
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+        />
         {hasPermission('CREATE_TASK') && (
           <button
             onClick={onOpenCreateTask}

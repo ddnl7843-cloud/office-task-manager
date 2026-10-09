@@ -542,6 +542,18 @@ class Database {
     return this.data.users.find(u => u.email.toLowerCase() === email.toLowerCase());
   }
 
+  public getNextUserId(): string {
+    let userCount = this.data.users.reduce((max, user) => {
+      const numericId = /^U(\d+)$/i.exec(user.id);
+      return numericId ? Math.max(max, Number(numericId[1])) : max;
+    }, 0) + 1;
+    let nextId = `U${String(userCount).padStart(3, '0')}`;
+    while (this.getUserById(nextId)) {
+      nextId = `U${String(++userCount).padStart(3, '0')}`;
+    }
+    return nextId;
+  }
+
   public getPublicUsers(): User[] {
     return this.data.users.map(({ passwordHash, salt, ...publicUser }) => publicUser);
   }

@@ -4,7 +4,7 @@
  */
 
 export type UserRole = 'ADMIN' | 'EMPLOYEE';
-export type UserStatus = 'ACTIVE' | 'INACTIVE';
+export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'PENDING';
 
 export interface User {
   id: string;

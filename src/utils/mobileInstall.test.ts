@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getMobileInstallSteps, getDeviceType } from './mobileInstall';
+import { getMobileInstallSteps, getDeviceType, isInstalledDisplayMode } from './mobileInstall';
 
 test('android steps mention browser and home screen', () => {
   const steps = getMobileInstallSteps('android');
@@ -22,4 +22,11 @@ test('device detection uses mobile markers', () => {
 
   assert.equal(android, 'android');
   assert.equal(ios, 'ios');
+});
+
+test('installed app detection supports browser standalone modes and iOS home screen', () => {
+  assert.equal(isInstalledDisplayMode('standalone', false), true);
+  assert.equal(isInstalledDisplayMode('fullscreen', false), true);
+  assert.equal(isInstalledDisplayMode('browser', true), true);
+  assert.equal(isInstalledDisplayMode('browser', false), false);
 });

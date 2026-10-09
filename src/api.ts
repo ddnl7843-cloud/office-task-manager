@@ -61,6 +61,13 @@ async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise
 
 export const api = {
   // Auth
+  async requestSignup(data: { name: string; email: string; password: string }): Promise<{ success: boolean; message: string }> {
+    return apiFetch('/api/auth/signup', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
   async login(email: string, password: string): Promise<{ token: string; user: User; permissions: Permission[] }> {
     const res = await apiFetch<{ token: string; user: User; permissions: Permission[] }>('/api/auth/login', {
       method: 'POST',

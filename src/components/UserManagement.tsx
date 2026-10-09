@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { User, UserRole, Task } from '../types';
+import { User, UserRole, UserStatus, Task } from '../types';
 import { api } from '../api';
 import { RoleBadge } from './Badge';
 import {
@@ -36,7 +36,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<'ALL' | UserRole>('ALL');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | UserStatus>('ALL');
 
   // New user form state
   const [newName, setNewName] = useState('');
@@ -53,7 +53,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editRole, setEditRole] = useState<UserRole>('EMPLOYEE');
-  const [editStatus, setEditStatus] = useState<'ACTIVE' | 'INACTIVE'>('ACTIVE');
+  const [editStatus, setEditStatus] = useState<UserStatus>('ACTIVE');
   const [editError, setEditError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -165,7 +165,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({
           <div>
             <h2 className="text-base font-bold text-slate-900">Office User Management</h2>
             <p className="text-xs text-slate-500">
-              Manage team accounts, assign roles, reset credentials, and oversee member workloads
+              Manage team accounts, approve signup requests, assign roles, reset credentials, and oversee workloads
             </p>
           </div>
         </div>
@@ -195,8 +195,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({
             <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as 'ALL' | UserRole)} className="rounded-lg border border-slate-300 bg-white p-2 text-xs text-slate-900">
               <option value="ALL">All roles</option><option value="ADMIN">Admin</option><option value="EMPLOYEE">Employee</option>
             </select>
-            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'ALL' | 'ACTIVE' | 'INACTIVE')} className="rounded-lg border border-slate-300 bg-white p-2 text-xs text-slate-900">
-              <option value="ALL">All statuses</option><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option>
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'ALL' | UserStatus)} className="rounded-lg border border-slate-300 bg-white p-2 text-xs text-slate-900">
+              <option value="ALL">All statuses</option><option value="PENDING">Pending approval</option><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option>
             </select>
           </div>
         </div>
@@ -249,10 +249,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({
                         className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                           u.status === 'ACTIVE'
                             ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : 'bg-slate-100 text-slate-500 border border-slate-300'
+                            : u.status === 'PENDING'
+                              ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                              : 'bg-slate-100 text-slate-500 border border-slate-300'
                         }`}
                       >
-                        {u.status}
+                        {u.status === 'PENDING' ? 'PENDING APPROVAL' : u.status}
                       </span>
                     </td>
 
@@ -290,7 +292,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({
                               : 'text-emerald-600 hover:bg-emerald-50 border-emerald-200'
                           }`}
                         >
-                          {u.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
+                          {u.status === 'ACTIVE' ? 'Deactivate' : u.status === 'PENDING' ? 'Approve' : 'Activate'}
                         </button>
 
                       </div>
@@ -329,8 +331,9 @@ export const UserManagement: React.FC<UserManagementProps> = ({
               </label>
               <label className="block text-xs font-semibold text-slate-700">
                 Account status
-                <select value={editStatus} onChange={(event) => setEditStatus(event.target.value as 'ACTIVE' | 'INACTIVE')} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 text-slate-900">
+                <select value={editStatus} onChange={(event) => setEditStatus(event.target.value as UserStatus)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 text-slate-900">
                   <option value="ACTIVE">Active</option>
+                  {editingUser.status === 'PENDING' && <option value="PENDING">Pending approval</option>}
                   <option value="INACTIVE">Inactive</option>
                 </select>
               </label>
