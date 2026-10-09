@@ -382,6 +382,13 @@ export const api = {
     return apiFetch('/api/database/backup');
   },
 
+  async restoreDatabase(backup: unknown): Promise<{ success: boolean; message: string }> {
+    return apiFetch('/api/database/restore', {
+      method: 'POST',
+      body: JSON.stringify({ backup, confirmRestore: 'RESTORE' }),
+    });
+  },
+
   // Reports
   async getReports(): Promise<{
     summary: {

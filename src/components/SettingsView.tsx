@@ -25,6 +25,8 @@ export const SettingsView: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [isRestoring, setIsRestoring] = useState(false);
 
   // Email service configuration status (SMTP credentials remain server-side).
   const [emailStatus, setEmailStatus] = useState<{
@@ -76,15 +78,34 @@ export const SettingsView: React.FC = () => {
   const handleDownloadBackup = async () => {
     try {
       const db = await api.getRawDatabase();
-      const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(db, null, 2));
+      const backupBlob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
+      const backupUrl = URL.createObjectURL(backupBlob);
       const downloadAnchor = document.createElement('a');
-      downloadAnchor.setAttribute('href', dataStr);
-      downloadAnchor.setAttribute('download', `office_tasks_backup_${new Date().toISOString().split('T')[0]}.json`);
+      downloadAnchor.href = backupUrl;
+      downloadAnchor.download = `paisafin_task_manager_backup_${new Date().toISOString().split('T')[0]}.json`;
       document.body.appendChild(downloadAnchor);
       downloadAnchor.click();
       downloadAnchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(backupUrl), 1000);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Failed to download backup');
+    }
+  };
+
+  const handleRestoreBackup = async () => {
+    if (!restoreFile || !window.confirm('This replaces the current app data with the selected backup. Continue only if the backup is complete and trusted.')) {
+      return;
+    }
+    setIsRestoring(true);
+    try {
+      const backup = JSON.parse(await restoreFile.text()) as unknown;
+      const result = await api.restoreDatabase(backup);
+      alert(result.message);
+      window.location.reload();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to restore backup');
+    } finally {
+      setIsRestoring(false);
     }
   };
 
@@ -304,7 +325,7 @@ export const SettingsView: React.FC = () => {
           </h3>
 
           <p className="text-xs text-slate-600">
-            All office tasks, team users, comments, permissions, and audit logs are safely stored in the server file storage (<code className="bg-slate-100 px-1 py-0.5 rounded text-indigo-700 font-mono text-[11px]">data/office_tasks_db.json</code>). You can download an offline JSON backup snapshot at any time.
+            All office data is stored in the server data folder. Download a full JSON backup before redeploying or changing storage. It includes password hashes (never plain-text passwords), so keep the file private and do not commit or share it.
           </p>
 
           <button
@@ -315,6 +336,28 @@ export const SettingsView: React.FC = () => {
             <Download className="w-4 h-4 text-slate-600" />
             <span>Download Full Database Backup (JSON)</span>
           </button>
+          <div className="space-y-2 border-t border-slate-100 pt-3">
+            <label className="block text-xs font-semibold text-slate-700">
+              Restore from a trusted backup
+              <input
+                type="file"
+                accept="application/json,.json"
+                onChange={event => setRestoreFile(event.target.files?.[0] || null)}
+                className="mt-1.5 block w-full text-xs text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-xs file:font-semibold"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => void handleRestoreBackup()}
+              disabled={!restoreFile || isRestoring}
+              className="rounded-lg border border-rose-200 bg-white px-4 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isRestoring ? 'Restoring backup…' : 'Restore selected backup'}
+            </button>
+            <p className="text-[11px] text-rose-700">
+              Restoring replaces all current app records and signs everyone out. A server-side safety copy is saved before replacement. Users from older backups without password hashes may need an admin password reset.
+            </p>
+          </div>
         </div>
 
         <div className="flex justify-end pt-2">

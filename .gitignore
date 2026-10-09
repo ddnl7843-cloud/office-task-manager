@@ -7,5 +7,6 @@ coverage/
 .env*
 !.env.example
 data/office_tasks_db.json
+data/*.bak
 data/branding/
 data/expense-receipts/

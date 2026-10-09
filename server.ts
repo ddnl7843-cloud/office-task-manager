@@ -10,6 +10,8 @@ import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
 import {
   db,
+  APP_DATA_DIR,
+  InvalidDatabaseBackupError,
   verifyPassword,
   isLegacyPassword,
   hashPassword,
@@ -1345,7 +1347,7 @@ async function startServer() {
     const receipt = decodeExpenseReceipt(dataUrl);
     if (!receipt) throw new Error('Upload a valid PNG, JPEG, or PDF receipt up to 5 MB');
     const filename = `receipt-${crypto.randomBytes(16).toString('hex')}.${receipt.extension}`;
-    const receiptDir = path.join(process.cwd(), 'data', 'expense-receipts');
+    const receiptDir = path.join(APP_DATA_DIR, 'expense-receipts');
     await fs.mkdir(receiptDir, { recursive: true });
     await fs.writeFile(path.join(receiptDir, filename), receipt.buffer, { flag: 'wx', mode: 0o600 });
     return { filename, contentType: receipt.contentType };
@@ -1543,7 +1545,7 @@ async function startServer() {
       return res.status(404).json({ error: 'Receipt not found' });
     }
     try {
-      const receipt = await fs.readFile(path.join(process.cwd(), 'data', 'expense-receipts', expense.receiptFile));
+      const receipt = await fs.readFile(path.join(APP_DATA_DIR, 'expense-receipts', expense.receiptFile));
       const contentType = expense.receiptType === 'image/png' ? 'image/png'
         : expense.receiptType === 'image/jpeg' ? 'image/jpeg' : 'application/pdf';
       res.setHeader('Content-Type', contentType);
@@ -2011,7 +2013,7 @@ async function startServer() {
     const match = /^brand-[a-f0-9]{32}\.(png|jpg|webp)$/.exec(req.params.filename);
     if (!match) return res.status(404).json({ error: 'Brand logo not found' });
 
-    const logoPath = path.join(process.cwd(), 'data', 'branding', match[0]);
+    const logoPath = path.join(APP_DATA_DIR, 'branding', match[0]);
     try {
       const image = await fs.readFile(logoPath);
       const contentType = match[1] === 'png' ? 'image/png' : match[1] === 'jpg' ? 'image/jpeg' : 'image/webp';
@@ -2077,7 +2079,7 @@ async function startServer() {
         return res.status(400).json({ error: 'Choose a valid PNG, JPEG, or WebP image up to 1 MB' });
       }
       const filename = `brand-${crypto.randomBytes(16).toString('hex')}.${uploadedLogo.extension}`;
-      const brandingDir = path.join(process.cwd(), 'data', 'branding');
+      const brandingDir = path.join(APP_DATA_DIR, 'branding');
       uploadedLogoPath = path.join(brandingDir, filename);
       try {
         await fs.mkdir(brandingDir, { recursive: true });
@@ -2161,12 +2163,33 @@ async function startServer() {
 
   app.get('/api/database/backup', requireAuth, requirePermission('MANAGE_SETTINGS'), (req: Request, res: Response) => {
     const raw = db.getData();
-    const sanitizedUsers = raw.users.map(({ passwordHash, salt, ...u }) => u);
     res.json({
       ...raw,
-      users: sanitizedUsers,
       sessions: [],
     });
+  });
+
+  app.post('/api/database/restore', requireAuth, requirePermission('MANAGE_SETTINGS'), (req: Request, res: Response) => {
+    if (req.body?.confirmRestore !== 'RESTORE') {
+      return res.status(400).json({ error: 'Explicit restore confirmation is required' });
+    }
+    try {
+      db.restoreBackup(req.body.backup);
+    } catch (restoreError) {
+      if (restoreError instanceof InvalidDatabaseBackupError) {
+        return res.status(400).json({ error: restoreError.message });
+      }
+      console.error('Failed to restore application backup', restoreError);
+      return res.status(500).json({ error: 'Could not restore this backup because the server could not save it' });
+    }
+    db.logActivity({
+      userId: req.user!.id,
+      userName: req.user!.name,
+      userRole: req.user!.role,
+      action: 'DATABASE_RESTORED',
+      description: 'Restored application data from an administrator-provided backup',
+    });
+    return res.json({ success: true, message: 'Backup restored. Sign in again to continue.' });
   });
 
   // -------------------------------------------------------------

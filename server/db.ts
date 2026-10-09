@@ -4,6 +4,7 @@
  */
 
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 import {
@@ -19,6 +20,7 @@ import {
   RolePermissions,
 } from '../src/types';
 import { ALL_SYSTEM_PERMISSIONS, resolveUserPermissions } from './permissions';
+import { removeDemoTasks } from './demoData';
 
 export { ALL_SYSTEM_PERMISSIONS, PROTECTED_ADMIN_PERMISSIONS } from './permissions';
 
@@ -49,7 +51,17 @@ export interface DatabaseSchema {
   taskCounter: number;
 }
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+export class InvalidDatabaseBackupError extends Error {}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+const LEGACY_DATA_DIR = path.resolve(process.cwd(), 'data');
+export const APP_DATA_DIR = path.resolve(
+  process.env.APP_DATA_DIR || path.join(os.homedir(), '.paisafin-task-manager'),
+);
+const DATA_DIR = APP_DATA_DIR;
 const DB_FILE = path.join(DATA_DIR, 'office_tasks_db.json');
 
 export const DEFAULT_ROLE_PERMISSIONS: RolePermissions = {
@@ -117,313 +129,39 @@ function getDefaultDatabase(): DatabaseSchema {
     throw new Error('INITIAL_ADMIN_PASSWORD must be set to at least 10 characters before first database initialization');
   }
   const adminCredentials = hashPassword(initialAdminPassword);
-  const inaccessibleSeedCredentials = () => hashPassword(crypto.randomBytes(32).toString('hex'));
-  const employeeCredentials = [
-    inaccessibleSeedCredentials(),
-    inaccessibleSeedCredentials(),
-    inaccessibleSeedCredentials(),
-  ];
-
   const now = new Date().toISOString();
-  const todayStr = '2026-09-22';
 
-  const users: UserRecord[] = [
-    {
+  return {
+    schemaVersion: 1,
+    users: [{
       id: 'U001',
       name: 'Amit Bahuguna',
       email: 'amitbahuguna@paisafin.com',
       role: 'ADMIN',
       status: 'ACTIVE',
-      createdAt: '2026-09-01T08:00:00.000Z',
+      createdAt: now,
       passwordHash: adminCredentials.hash,
       salt: adminCredentials.salt,
+    }],
+    tasks: [],
+    comments: [],
+    notifications: [],
+    activityLogs: [],
+    settings: {
+      companyName: 'PaisaFin',
+      appName: 'PaisaFin Task Manager',
+      logoUrl: null,
+      defaultTaskPriority: 'Medium',
+      defaultTaskStatus: 'Assigned',
+      sessionTimeoutMinutes: 480,
+      enableDeadlineNotifications: true,
+      notificationAdvanceDays: 2,
     },
-    {
-      id: 'U002',
-      name: 'Rahul Petwal',
-      email: 'Rahulpetwal@Paisafin.com',
-      role: 'EMPLOYEE',
-      status: 'ACTIVE',
-      createdAt: '2026-09-01T08:30:00.000Z',
-      passwordHash: employeeCredentials[0].hash,
-      salt: employeeCredentials[0].salt,
-    },
-    {
-      id: 'U003',
-      name: 'Shailesh',
-      email: 'shailesh@Paisafin.com',
-      role: 'EMPLOYEE',
-      status: 'ACTIVE',
-      createdAt: '2026-09-01T09:00:00.000Z',
-      passwordHash: employeeCredentials[1].hash,
-      salt: employeeCredentials[1].salt,
-    },
-    {
-      id: 'U004',
-      name: 'Jitendra',
-      email: 'jitendra@Paisafin.com',
-      role: 'EMPLOYEE',
-      status: 'ACTIVE',
-      createdAt: '2026-09-01T09:30:00.000Z',
-      passwordHash: employeeCredentials[2].hash,
-      salt: employeeCredentials[2].salt,
-    },
-  ];
-
-  const tasks: Task[] = [
-    {
-      id: 'TASK-20260922-0001',
-      title: 'Monthly Financial Reconciliation & Audit Preparation',
-      description: 'Review ledger balances, cross-verify bank statements for PaisaFin Q3, and prepare ledger reconciliation summary.',
-      category: 'Finance',
-      priority: 'High',
-      createdBy: 'U001',
-      createdByName: 'Amit Bahuguna',
-      assignedTo: 'U002',
-      assignedToName: 'Rahul Petwal',
-      approver: 'U001',
-      approverName: 'Amit Bahuguna',
-      startDate: '2026-09-20',
-      deadline: '2026-09-26',
-      expectedCompletionDate: '2026-09-25',
-      status: 'In Progress',
-      progress: 65,
-      needHelp: false,
-      approvalStatus: 'None',
-      createdAt: '2026-09-20T09:15:00.000Z',
-      updatedAt: '2026-09-21T14:30:00.000Z',
-    },
-    {
-      id: 'TASK-20260922-0002',
-      title: 'Client Onboarding Documentation Verification',
-      description: 'Audit uploaded KYC dossiers and corporate entity registrations for new retail merchant accounts.',
-      category: 'Operations',
-      priority: 'Urgent',
-      createdBy: 'U001',
-      createdByName: 'Amit Bahuguna',
-      assignedTo: 'U003',
-      assignedToName: 'Shailesh',
-      approver: 'U001',
-      approverName: 'Amit Bahuguna',
-      startDate: '2026-09-18',
-      deadline: '2026-09-22',
-      expectedCompletionDate: '2026-09-22',
-      status: 'Completion Requested',
-      progress: 100,
-      needHelp: false,
-      completionRequestedAt: '2026-09-22T08:00:00.000Z',
-      approvalStatus: 'Pending',
-      createdAt: '2026-09-18T10:00:00.000Z',
-      updatedAt: '2026-09-22T08:00:00.000Z',
-    },
-    {
-      id: 'TASK-20260922-0003',
-      title: 'Quarterly IT Security Audit & System Hardening',
-      description: 'Conduct password policy checks, verify internal VPN logs, and review permissions matrix.',
-      category: 'IT',
-      priority: 'Medium',
-      createdBy: 'U001',
-      createdByName: 'Amit Bahuguna',
-      assignedTo: 'U004',
-      assignedToName: 'Jitendra',
-      approver: 'U001',
-      approverName: 'Amit Bahuguna',
-      startDate: '2026-09-19',
-      deadline: '2026-09-28',
-      expectedCompletionDate: '2026-09-27',
-      status: 'In Progress',
-      progress: 40,
-      needHelp: true,
-      helpFrom: 'U001',
-      helpFromName: 'Amit Bahuguna',
-      problemDescription: 'Require elevated admin access credentials for server room rack 3 network switch.',
-      approvalStatus: 'None',
-      createdAt: '2026-09-19T11:00:00.000Z',
-      updatedAt: '2026-09-21T16:00:00.000Z',
-    },
-    {
-      id: 'TASK-20260922-0004',
-      title: 'Update Customer KYC Compliance Checklist',
-      description: 'Ensure revised regulatory guidelines are fully incorporated into the staff standard operating procedure.',
-      category: 'Documentation',
-      priority: 'High',
-      createdBy: 'U001',
-      createdByName: 'Amit Bahuguna',
-      assignedTo: 'U003',
-      assignedToName: 'Shailesh',
-      approver: 'U001',
-      approverName: 'Amit Bahuguna',
-      startDate: '2026-09-10',
-      deadline: '2026-09-18', // Past deadline -> triggers Overdue logic!
-      expectedCompletionDate: '2026-09-23',
-      status: 'On Hold',
-      progress: 25,
-      needHelp: false,
-      approvalStatus: 'None',
-      createdAt: '2026-09-10T10:00:00.000Z',
-      updatedAt: '2026-09-18T12:00:00.000Z',
-    },
-    {
-      id: 'TASK-20260922-0005',
-      title: 'PaisaFin Q3 Vendor Agreement Renewals',
-      description: 'Finalize terms, review non-disclosure agreements, and archive counter-signed contracts.',
-      category: 'Admin',
-      priority: 'Low',
-      createdBy: 'U001',
-      createdByName: 'Amit Bahuguna',
-      assignedTo: 'U002',
-      assignedToName: 'Rahul Petwal',
-      approver: 'U001',
-      approverName: 'Amit Bahuguna',
-      startDate: '2026-09-12',
-      deadline: '2026-09-20',
-      expectedCompletionDate: '2026-09-19',
-      status: 'Completed',
-      progress: 100,
-      needHelp: false,
-      completionRequestedAt: '2026-09-19T14:00:00.000Z',
-      approvalStatus: 'Approved',
-      approvalComment: 'All vendor agreements verified and counter-signed accurately. Great job.',
-      completedAt: '2026-09-20T10:30:00.000Z',
-      createdAt: '2026-09-12T09:00:00.000Z',
-      updatedAt: '2026-09-20T10:30:00.000Z',
-    },
-  ];
-
-  const comments: TaskComment[] = [
-    {
-      id: 'COMM-1',
-      taskId: 'TASK-20260922-0001',
-      userId: 'U002',
-      userName: 'Rahul Petwal',
-      userRole: 'EMPLOYEE',
-      comment: 'Initial 50 bank statements analyzed. Reconciling pending payments with accounts department.',
-      createdAt: '2026-09-21T11:20:00.000Z',
-    },
-    {
-      id: 'COMM-2',
-      taskId: 'TASK-20260922-0001',
-      userId: 'U001',
-      userName: 'Amit Bahuguna',
-      userRole: 'ADMIN',
-      comment: 'Please check note #4 on uncredited cheques from HDFC bank as well.',
-      createdAt: '2026-09-21T13:45:00.000Z',
-    },
-    {
-      id: 'COMM-3',
-      taskId: 'TASK-20260922-0003',
-      userId: 'U004',
-      userName: 'Jitendra',
-      userRole: 'EMPLOYEE',
-      comment: 'Need help with rack 3 switch access. Submitted help request.',
-      createdAt: '2026-09-21T16:05:00.000Z',
-    },
-  ];
-
-  const notifications: AppNotification[] = [
-    {
-      id: 'NOTIF-1',
-      userId: 'U001',
-      title: 'Completion Requested',
-      message: 'Shailesh has requested completion for: Client Onboarding Documentation Verification',
-      type: 'COMPLETION_REQUESTED',
-      taskId: 'TASK-20260922-0002',
-      read: false,
-      createdAt: '2026-09-22T08:00:00.000Z',
-    },
-    {
-      id: 'NOTIF-2',
-      userId: 'U001',
-      title: 'Help Requested',
-      message: 'Jitendra requested help on: Quarterly IT Security Audit & System Hardening',
-      type: 'HELP_REQUESTED',
-      taskId: 'TASK-20260922-0003',
-      read: false,
-      createdAt: '2026-09-21T16:00:00.000Z',
-    },
-    {
-      id: 'NOTIF-3',
-      userId: 'U002',
-      title: 'Task Approved',
-      message: 'Your task PaisaFin Q3 Vendor Agreement Renewals has been approved and completed.',
-      type: 'TASK_APPROVED',
-      taskId: 'TASK-20260922-0005',
-      read: true,
-      createdAt: '2026-09-20T10:30:00.000Z',
-    },
-  ];
-
-  const activityLogs: ActivityLogEntry[] = [
-    {
-      id: 'ACT-1',
-      timestamp: '2026-09-20T09:15:00.000Z',
-      userId: 'U001',
-      userName: 'Amit Bahuguna',
-      userRole: 'ADMIN',
-      action: 'TASK_CREATED',
-      taskId: 'TASK-20260922-0001',
-      taskTitle: 'Monthly Financial Reconciliation & Audit Preparation',
-      description: 'Created task and assigned to Rahul Petwal',
-    },
-    {
-      id: 'ACT-2',
-      timestamp: '2026-09-20T10:30:00.000Z',
-      userId: 'U001',
-      userName: 'Amit Bahuguna',
-      userRole: 'ADMIN',
-      action: 'TASK_APPROVED',
-      taskId: 'TASK-20260922-0005',
-      taskTitle: 'PaisaFin Q3 Vendor Agreement Renewals',
-      description: 'Approved completion request with comment: All vendor agreements verified',
-    },
-    {
-      id: 'ACT-3',
-      timestamp: '2026-09-21T16:00:00.000Z',
-      userId: 'U004',
-      userName: 'Jitendra',
-      userRole: 'EMPLOYEE',
-      action: 'TASK_HELP_REQUESTED',
-      taskId: 'TASK-20260922-0003',
-      taskTitle: 'Quarterly IT Security Audit & System Hardening',
-      description: 'Requested help from Amit Bahuguna: Require elevated admin access credentials',
-    },
-    {
-      id: 'ACT-4',
-      timestamp: '2026-09-22T08:00:00.000Z',
-      userId: 'U003',
-      userName: 'Shailesh',
-      userRole: 'EMPLOYEE',
-      action: 'TASK_COMPLETION_REQUESTED',
-      taskId: 'TASK-20260922-0002',
-      taskTitle: 'Client Onboarding Documentation Verification',
-      description: 'Reached 100% progress and submitted for approval',
-    },
-  ];
-
-  const settings: AppSettings = {
-    companyName: 'PaisaFin',
-    appName: 'PaisaFin Task Manager',
-    logoUrl: null,
-    defaultTaskPriority: 'Medium',
-    defaultTaskStatus: 'Assigned',
-    sessionTimeoutMinutes: 480, // 8 hours office workday
-    enableDeadlineNotifications: true,
-    notificationAdvanceDays: 2,
-  };
-
-  return {
-    schemaVersion: 1,
-    users,
-    tasks,
-    comments,
-    notifications,
-    activityLogs,
-    settings,
     rolePermissions: DEFAULT_ROLE_PERMISSIONS,
     expenses: [],
     expenseSettings: DEFAULT_EXPENSE_SETTINGS,
     sessions: [],
-    taskCounter: 5,
+    taskCounter: 0,
   };
 }
 
@@ -440,6 +178,11 @@ class Database {
         fs.mkdirSync(DATA_DIR, { recursive: true });
       }
 
+      if (DATA_DIR !== LEGACY_DATA_DIR && !fs.existsSync(DB_FILE) &&
+        fs.existsSync(path.join(LEGACY_DATA_DIR, 'office_tasks_db.json'))) {
+        fs.cpSync(LEGACY_DATA_DIR, DATA_DIR, { recursive: true, force: false });
+      }
+
       if (fs.existsSync(DB_FILE)) {
         const raw = fs.readFileSync(DB_FILE, 'utf-8').trim();
         if (!raw) {
@@ -451,6 +194,13 @@ class Database {
         if (!parsed.users || !parsed.tasks || !parsed.rolePermissions) {
           throw new Error('Database schema invalid, reinitializing');
         }
+        parsed.comments = Array.isArray(parsed.comments) ? parsed.comments : [];
+        parsed.notifications = Array.isArray(parsed.notifications) ? parsed.notifications : [];
+        parsed.activityLogs = Array.isArray(parsed.activityLogs) ? parsed.activityLogs : [];
+        parsed.sessions = Array.isArray(parsed.sessions) ? parsed.sessions : [];
+        parsed.taskCounter = Number.isInteger(parsed.taskCounter) && parsed.taskCounter >= 0
+          ? parsed.taskCounter
+          : parsed.tasks.length;
         const needsExpensePermissionMigration = !Number.isInteger(parsed.schemaVersion) || parsed.schemaVersion < 1;
         parsed.expenses = Array.isArray(parsed.expenses) ? parsed.expenses : [];
         parsed.expenseSettings = {
@@ -487,6 +237,11 @@ class Database {
         }
         if (parsed.settings && parsed.settings.logoUrl === undefined) {
           parsed.settings.logoUrl = null;
+        }
+        if (removeDemoTasks(parsed)) {
+          const cleanupBackupPath = `${DB_FILE}.before-demo-cleanup-${Date.now()}.bak`;
+          fs.copyFileSync(DB_FILE, cleanupBackupPath);
+          this.persist(parsed);
         }
         return parsed;
       }
@@ -527,6 +282,72 @@ class Database {
 
   public save() {
     this.persist();
+  }
+
+  public restoreBackup(input: unknown) {
+    if (!isRecord(input)) throw new InvalidDatabaseBackupError('Backup file must contain a JSON object');
+    const candidate = input as Partial<DatabaseSchema>;
+    const requiredArrays: (keyof DatabaseSchema)[] = [
+      'users', 'tasks', 'comments', 'notifications', 'activityLogs', 'expenses', 'sessions',
+    ];
+    if (requiredArrays.some(key => !Array.isArray(candidate[key])) ||
+      !isRecord(candidate.settings) || !isRecord(candidate.rolePermissions) ||
+      !isRecord(candidate.expenseSettings) || !Number.isInteger(candidate.taskCounter) ||
+      (candidate.taskCounter as number) < 0 || candidate.schemaVersion !== 1) {
+      throw new InvalidDatabaseBackupError('Backup file is incomplete or has an unsupported format');
+    }
+
+    const users = (candidate.users as unknown[]).map(user => {
+      if (!isRecord(user)) throw new InvalidDatabaseBackupError('Backup contains an invalid user record');
+      const existingUser = this.data.users.find(current =>
+        current.id === user.id || current.email.toLowerCase() === String(user.email || '').toLowerCase());
+      const hasCredentials = user.passwordHash !== undefined && user.salt !== undefined;
+      if (!hasCredentials && (user.passwordHash !== undefined || user.salt !== undefined)) {
+        throw new InvalidDatabaseBackupError('Backup contains incomplete user credentials');
+      }
+      const credentials = hasCredentials
+        ? { hash: user.passwordHash, salt: user.salt }
+        : existingUser
+          ? { hash: existingUser.passwordHash, salt: existingUser.salt }
+          : hashPassword(crypto.randomBytes(32).toString('hex'));
+      return { ...user, passwordHash: credentials.hash, salt: credentials.salt } as UserRecord;
+    });
+    const uniqueIds = new Set<string>();
+    const uniqueEmails = new Set<string>();
+    for (const user of users) {
+      if (!isRecord(user) || typeof user.id !== 'string' || typeof user.name !== 'string' ||
+        typeof user.email !== 'string' || !['ADMIN', 'EMPLOYEE'].includes(user.role) ||
+        !['ACTIVE', 'INACTIVE', 'PENDING'].includes(user.status) ||
+        typeof user.passwordHash !== 'string' || !/^[a-f0-9]{128}$/i.test(user.passwordHash) ||
+        typeof user.salt !== 'string' || !/^[a-f0-9]{32}$/i.test(user.salt) || uniqueIds.has(user.id) ||
+        uniqueEmails.has(user.email.toLowerCase())) {
+        throw new InvalidDatabaseBackupError('Backup contains an invalid or duplicate user record');
+      }
+      uniqueIds.add(user.id);
+      uniqueEmails.add(user.email.toLowerCase());
+    }
+    if (!users.some(user => user.role === 'ADMIN' && user.status === 'ACTIVE')) {
+      throw new InvalidDatabaseBackupError('Backup must contain at least one active administrator');
+    }
+    for (const role of ['ADMIN', 'EMPLOYEE'] as const) {
+      if (!Array.isArray(candidate.rolePermissions[role])) {
+        throw new InvalidDatabaseBackupError('Backup contains invalid role permissions');
+      }
+    }
+    if (!Array.isArray(candidate.expenseSettings.categories) || !Array.isArray(candidate.expenseSettings.rates)) {
+      throw new InvalidDatabaseBackupError('Backup contains invalid expense settings');
+    }
+
+    const restored = JSON.parse(JSON.stringify(candidate)) as DatabaseSchema;
+    restored.users = users;
+    restored.sessions = [];
+    removeDemoTasks(restored);
+
+    const restoreBackupPath = `${DB_FILE}.before-restore-${Date.now()}.bak`;
+    if (fs.existsSync(DB_FILE)) fs.copyFileSync(DB_FILE, restoreBackupPath);
+    this.persist(restored);
+    this.data = restored;
+    return restoreBackupPath;
   }
 
   public getData(): DatabaseSchema {

@@ -22,9 +22,10 @@ A React + Vite frontend and Node.js + Express backend for an office task managem
 - Frontend: React 19 + Vite + TypeScript.
 - Backend: Express running in the same Node.js process.
 - Authentication: app-managed sessions stored in the JSON database; passwords are PBKDF2 hashes.
-- Source of truth: `data/office_tasks_db.json`; the server writes this file directly.
+- Source of truth: `office_tasks_db.json` in `APP_DATA_DIR` (defaults to `.paisafin-task-manager/` under the operating-system account's home folder, outside the deployed source tree). On the first start, if this folder has no database, an existing `data/` database and uploads are copied over without overwriting existing files. The new home-folder location remains the source of truth on later deployments. `APP_DATA_DIR` can override it.
 - Email: existing server-side Nodemailer/Hostinger SMTP integration.
-- A new database requires `INITIAL_ADMIN_PASSWORD` (10+ characters) for the initial admin. It is never a fixed default; the seeded employee accounts receive random undisclosed passwords and can be reset by the admin. Unset the bootstrap variable after the first successful initialization.
+- A new database requires `INITIAL_ADMIN_PASSWORD` (10+ characters) for the initial admin. It is never a fixed default. Unset the bootstrap variable after the first successful initialization.
+- A one-time startup cleanup removes the five known seeded demo tasks and their task-linked comments, notifications, and activity records. Before cleanup, the original JSON database is copied to a private `.before-demo-cleanup-*.bak` file in the data directory. Other tasks and unrelated history are retained. Fresh databases are created without demo tasks, employees, comments, notifications, or activity logs.
 
 ### Supabase status
 
@@ -168,7 +169,11 @@ For a brand-new installation only, set `INITIAL_ADMIN_PASSWORD` to a unique 10+ 
 
 ## Safe release and rollback
 
-Before pushing or redeploying, make a private, verified backup of `data/office_tasks_db.json` from the running Hostinger instance and keep it outside the repository. Confirm Hostinger persists this writable data path across builds/restarts. The JSON file is currently tracked in this repository; `.gitignore` alone does not remove an already-tracked file. Review the repository's access and commit history before sharing it publicly, and arrange a careful history/data cleanup if it contains production data.
+Before the first release that changes storage, use **Settings → Download Full Database Backup (JSON)** in the live app and keep the downloaded file private. It includes password hashes so that account credentials can be preserved; never commit or share it. The JSON backup does not include uploaded logo or receipt files.
+
+The app defaults to `.paisafin-task-manager/` inside the Node.js account's home folder, outside the changing deployment source. The first start copies the existing `data/` folder there only when no persistent database already exists. If you set `APP_DATA_DIR` in Hostinger, point it to a stable writable directory and do not change it between releases. Before the first redeploy, download a JSON backup through **Settings → Download Full Database Backup (JSON)**. After deployment, sign in and confirm the tasks and users remain. Use **Settings → Restore selected backup** only if records are missing; restore replaces current database records, saves a server-side `.before-restore-*.bak` copy, and signs everyone out. Backups made by older app versions omit password hashes; existing accounts matched by ID/email retain their current credentials when possible, while unmatched accounts need an administrator password reset. Keep the original backup private until the restored users, tasks, permissions, expenses, and settings have been checked. Logo and receipt files are copied with the initial `data/` migration and then stored under the matching `branding/` and `expense-receipts/` subfolders of `APP_DATA_DIR`.
+
+For every later release, leave the persistent data directory unchanged and redeploy only the code. The app then reads and writes the same JSON database rather than a database copy shipped with the source. Download a fresh backup before major releases and verify one after deployment. Hostinger's account home directory must persist across application redeploys for this default to protect production data.
 
 For a release from PowerShell:
 
@@ -179,9 +184,9 @@ git commit -m "Prepare task manager handover"
 git push origin <branch>
 ```
 
-In Hostinger, select the matching branch, set Node.js 20 LTS, `npm run build`, and `npm run start`, configure the existing SMTP variables in the server runtime, and redeploy. Check the deployment logs and sign in with an authorized account. Do not send a test email as part of automated validation.
+In Hostinger, select the matching branch, set Node.js 20 LTS, `npm run build`, and `npm run start`, configure the existing SMTP variables in the server runtime, and redeploy. Set `APP_DATA_DIR` only if you are overriding the default persistent home-folder location. Check the deployment logs and sign in with an authorized account. Do not send a test email as part of automated validation.
 
-If the deployment fails, redeploy the previous known-good Git revision and restore the pre-deployment JSON backup only if the new build changed or damaged the data file. Keep a copy of the post-failure file before any restore, compare the versions, then verify login and representative task records. This app has no database migration in this release.
+If the deployment fails, redeploy the previous known-good Git revision and restore the pre-deployment JSON backup only if the new build changed or damaged the data file. Keep a copy of the post-failure file before any restore, compare the versions, then verify login and representative task records. The release does not change the database schema.
 
 ## Tests
 
@@ -191,7 +196,7 @@ Run the focused automated suite with:
 npm test
 ```
 
-It covers the permission resolver and existing mobile-install helper tests. It does not connect to Supabase, exercise the Express routes end-to-end, or send SMTP messages.
+It covers permission and expense rules, signup validation, mobile-install detection, and removal of the five seeded demo tasks. It does not connect to Supabase or send SMTP messages. Backup/restore and clean database startup were smoke-tested locally using an isolated temporary data directory.
 
 ## Subdomain and SSL
 
