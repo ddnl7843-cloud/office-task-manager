@@ -45,6 +45,7 @@ Supabase is not connected to this app. The Hostinger instructions alone do not p
 
 This app is built as a web app, so users can install it directly from a browser link instead of going through the Play Store.
 The installed app is named **PaisaFin** and uses the PaisaFin logo on Android and iOS home screens.
+After the first open of a release that includes app-update support, the installed app checks for newer releases. The current version continues working while a new version downloads; an **Update now** button appears only when the new version is ready. Tapping it activates the update and reloads the app—users do not need to uninstall and reinstall. If the button does not appear immediately after deployment, reopen the app while online and allow the update check to finish.
 
 ### Easy steps for Android
 

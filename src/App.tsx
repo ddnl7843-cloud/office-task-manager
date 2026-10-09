@@ -23,6 +23,7 @@ import { ActivityLogView } from './components/ActivityLogView';
 import { SettingsView } from './components/SettingsView';
 import { BrandingSettingsView } from './components/BrandingSettingsView';
 import { ExpenseManagementView } from './components/ExpenseManagementView';
+import { PwaUpdatePrompt } from './components/PwaUpdatePrompt';
 import { MyAccountModal } from './components/MyAccountModal';
 import { api } from './api';
 import { Task, User, AppNotification, BrandingSettings } from './types';
@@ -447,8 +448,11 @@ const MainApp: React.FC = () => {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <MainApp />
-    </AuthProvider>
+    <>
+      <AuthProvider>
+        <MainApp />
+      </AuthProvider>
+      <PwaUpdatePrompt />
+    </>
   );
 }
